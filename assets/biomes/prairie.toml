@@ -1,0 +1,21 @@
+name = "prairie"
+
+[conditions]
+latitude = [30, 50]                # latitude between 30° and 50°
+day_temperature = { min = 15, max = 35 }  # Daytime temperatures in degrees Celsius
+night_temperature = { min = 5, max = 20 }   # Nighttime temperatures in degrees Celsius
+precipitation = 500                 # Annual precipitation in mm
+altitude = { min = 0, max = 2000 }  # Altitude in meters
+
+[fauna]                              # Section for animals
+species = ["cow", "sheep"]  # Animals found in the prairie
+
+[flora]                              # Section for plants
+species = ["grass", "wildflowers", "clover"]  # Plants found in the prairie
+
+[tiles]
+prairie_grass = [89, 160, 67]       # grass tile
+wildflower_patch = [124, 190, 94]   # wildflower patch tile
+prairie_dirt = [112, 64, 37]        # dirt tile
+prairie_stone = [130, 138, 135]     # prairie stone
+prairie_water = [24, 77, 66]        # water tile (pond or stream)

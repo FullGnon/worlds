@@ -1,0 +1,20 @@
+name = "arid_desert"
+[conditions]
+latitude = [20, 30] # latitude between 20° and 30°
+day_temperature = { min = 30, max = 50 }  # Daytime temperatures in degrees Celsius
+night_temperature = { min = 0, max = 15 }  # Nighttime temperatures in degrees Celsius
+precipitation = 100                 # Annual precipitation in mm
+altitude = { min = 0, max = 1000 }  # Altitude in meters
+
+[fauna]                              # Section for animals
+species = ["lizard", "snake", "fox"]  # Animals found in the arid desert
+
+[flora]                              # Section for plants
+species = ["cactus", "desert_shrub", "grass" , "aloe_vera"] # Plants found in the arid desert
+
+[tiles]
+arid_desert_sand = [207, 150, 79] # dry desert sand
+moist_arid_desert_sand = [181, 126, 59] # moist sand from oasis
+oasis_water = [42, 219, 225] # water from oasis
+arid_desert_stone = [136, 114, 95] # desert stone
+arid_desert_salt = [248, 255, 254] # salt desert
