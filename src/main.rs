@@ -2,9 +2,11 @@ use std::{thread::sleep, time::Duration};
 
 use bevy::{
     ecs::{query, reflect},
+    math::uvec2,
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
+use bevy_fast_tilemap::prelude::*;
 use bevy_inspector_egui::{
     bevy_egui::EguiPlugin, prelude::*, quick::ResourceInspectorPlugin, DefaultInspectorConfigPlugin,
 };
@@ -14,7 +16,12 @@ use rand::prelude::*;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, PanCamPlugin, EguiPlugin))
+        .add_plugins((
+            DefaultPlugins,
+            PanCamPlugin,
+            EguiPlugin,
+            FastTileMapPlugin::default(),
+        ))
         .add_plugins(DefaultInspectorConfigPlugin)
         .init_resource::<Configuration>()
         .register_type::<Configuration>()
@@ -25,11 +32,11 @@ fn main() {
         .run();
 }
 
-fn scale(value: f32, min: f32, max: f32, scale_min: f32, scale_max: f32) -> f32 {
+fn scale(value: f64, min: f64, max: f64, scale_min: f64, scale_max: f64) -> f64 {
     ((value - min) / (max - min)) * (scale_max - scale_min) + scale_min
 }
 
-fn scale_to_index(value: f32, min: f32, max: f32, scale_min: f32, scale_max: f32) -> usize {
+fn scale_to_index(value: f64, min: f64, max: f64, scale_min: f64, scale_max: f64) -> usize {
     scale(value, min, max, scale_min, scale_max).round() as usize
 }
 
@@ -53,12 +60,12 @@ impl Default for Configuration {
         Self {
             height: 100,
             width: 100,
-            tile_size: Vec2::new(8., 8.),
+            tile_size: Vec2::new(16., 16.),
             seed: random(),
             noise_scale: 100.,
             octaves: 3,
             lacunarity: 2.,
-            persistance: 0.8,
+            persistance: 0.5,
             colors: [
                 [35, 30, 50], // Ocean
                 [61, 75, 100],
@@ -86,64 +93,75 @@ struct DrawMapEvent;
 fn on_draw_map(
     trigger: Trigger<DrawMapEvent>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<Map>>,
     config: Res<Configuration>,
 ) {
     let perlin = Perlin::new(config.seed);
-    let shape = Mesh2dHandle(meshes.add(Rectangle::new(config.tile_size.x, config.tile_size.y)));
 
-    for x in 0..config.width {
-        for y in 0..config.height {
-            let mut noise_value: f32 = 0.;
-            let scale = if config.noise_scale <= 0.0 {
-                0.0
-            } else {
-                config.noise_scale
-            };
-            for o in 0..config.octaves {
-                let frequency: f64 = config.lacunarity.powi(o);
-                let amplitude: f64 = config.persistance.powi(o);
-                let sample_x = x as f64 / scale * frequency;
-                let sample_y = y as f64 / scale * frequency;
+    let tiles_texture = asset_server.load("pixel_tiles_16.png");
 
-                let perlin_value = perlin.get([sample_x, sample_y, 0.0]);
+    let map = Map::builder(
+        // Map size
+        uvec2(config.width, config.height),
+        // Tile atlas
+        tiles_texture,
+        // Tile Size
+        config.tile_size,
+    )
+    .build_and_initialize(|m| {
+        for x in 0..m.size().x {
+            for y in 0..m.size().y {
+                let mut noise_value = 0.;
+                let scale = if config.noise_scale <= 0.0 {
+                    0.0
+                } else {
+                    config.noise_scale
+                };
+                for o in 0..config.octaves {
+                    let frequency: f64 = config.lacunarity.powi(o);
+                    let amplitude: f64 = config.persistance.powi(o);
+                    // TODO add octave offset (but why ?)
+                    let sample_x = x as f64 / scale * frequency;
+                    let sample_y = y as f64 / scale * frequency;
 
-                noise_value += (perlin_value * amplitude) as f32;
+                    let perlin_value = perlin.get([sample_x, sample_y, 0.0]);
+
+                    noise_value += perlin_value * amplitude;
+                }
+
+                let index =
+                    scale_to_index(noise_value, -1., 1., 0., config.colors.len() as f64 - 1.)
+                        .clamp(0, config.colors.len() - 1);
+
+                /*let color = Color::srgb(
+                    config.colors[0][0] as f32 / 255.,
+                    config.colors[0][1] as f32 / 255.,
+                    config.colors[0][2] as f32 / 255.,
+                );*/
+
+                m.set(x, y, index as u32);
             }
-
-            let index = scale_to_index(noise_value, -1., 1., 0., config.colors.len() as f32 - 1.)
-                .clamp(0, config.colors.len() - 1);
-            let pos_x = x as f32 * config.tile_size.x;
-            let pos_y = y as f32 * config.tile_size.y;
-            let color = Color::srgb(
-                config.colors[index][0] as f32 / 255.,
-                config.colors[index][1] as f32 / 255.,
-                config.colors[index][2] as f32 / 255.,
-            );
-
-            commands.spawn((
-                MaterialMesh2dBundle {
-                    mesh: shape.clone(),
-                    material: materials.add(color),
-                    transform: Transform::from_xyz(pos_x, pos_y, 0.0),
-                    ..default()
-                },
-                Tile,
-            ));
         }
-    }
+    });
+
+    commands.spawn(MapBundleManaged {
+        material: materials.add(map),
+        ..default()
+    });
 }
 
 fn setup(mut commands: Commands, config: Res<Configuration>) {
-    commands.spawn(Camera2dBundle {
-        transform: Transform::from_xyz(
-            (config.width as f32 * config.tile_size.x) / 2.,
-            (config.height as f32 * config.tile_size.y) / 2.,
-            0.0,
-        ),
-        ..default()
-    });
+    commands
+        .spawn(Camera2dBundle {
+            /*transform: Transform::from_xyz(
+                (config.width as f32 * config.tile_size.x) / 2.,
+                (config.height as f32 * config.tile_size.y) / 2.,
+                0.0,
+            ),*/
+            ..default()
+        })
+        .insert(PanCam::default());
 
     commands.trigger(DrawMapEvent);
 }
