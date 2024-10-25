@@ -13,6 +13,9 @@ rand = "0.8.5"
 serde = "1.0.213"
 toml = { version = "0.8.19", features = ["parse"] }
 
+[dev-dependencies]
+tempfile = "3.13.0"
+
 [features]
 default = [
     # Default to a native dev build.

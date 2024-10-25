@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::Path;
 use std::{fs, thread::sleep, time::Duration};
 
 use bevy::reflect::Reflect;
@@ -6,7 +8,6 @@ use bevy::{
     math::uvec2,
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
-    utils::HashMap,
 };
 use bevy_fast_tilemap::prelude::*;
 use bevy_inspector_egui::{
@@ -19,7 +20,7 @@ use serde::Deserialize;
 
 mod biomes;
 
-use biomes::Biome;
+use biomes::{load_biomes, Biome};
 
 fn main() {
     App::new()
@@ -73,7 +74,7 @@ impl Default for Configuration {
             octaves: 3,
             lacunarity: 2.,
             persistance: 0.5,
-            biomes: load_biomes("assets/biomes"),
+            biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
         }
     }
 }
@@ -125,8 +126,8 @@ fn on_draw_map(
                 }
 
                 let index =
-                    scale_to_index(noise_value, -1., 1., 0., config.colors.len() as f64 - 1.)
-                        .clamp(0, config.colors.len() - 1);
+                    scale_to_index(noise_value, -1., 1., 0., config.biomes.len() as f64 - 1.)
+                        .clamp(0, config.biomes.len() - 1);
 
                 /*let color = Color::srgb(
                     config.colors[0][0] as f32 / 255.,
