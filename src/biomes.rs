@@ -75,9 +75,11 @@ pub(crate) fn load_biomes(path: &Path) -> Result<HashMap<String, Biome>, io::Err
 
 #[cfg(test)]
 mod tests {
-    use bevy::utils::HashMap;
+    use bevy::{prelude::Res, utils::HashMap};
+    use noise::Billow;
     use rstest::{fixture, rstest};
     use std::{
+        fmt::Display,
         fs::File,
         io::{Error, Write},
         path::PathBuf,
@@ -87,7 +89,7 @@ mod tests {
 
     use crate::biomes::load_biome;
 
-    use super::{Biome, LoadBiomeError};
+    use super::{load_biomes, Biome, LoadBiomeError};
 
     enum BiomeTestCase {
         // Valid test cases
@@ -100,25 +102,40 @@ mod tests {
         WithTilesError,
     }
 
+    impl Display for BiomeTestCase {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let name = match self {
+                BiomeTestCase::NameOnly => "NameOnly",
+                BiomeTestCase::WithEmptyTiles => "WithEmptyTiles",
+                BiomeTestCase::WithSomeTiles => "WithSomeTiles",
+                BiomeTestCase::MissingName => "MissingName",
+                BiomeTestCase::InvalidFormat => "InvalidFormat",
+                BiomeTestCase::WithTilesError => "WithTilesError",
+            };
+
+            write!(f, "{}", name)
+        }
+    }
+
     impl BiomeTestCase {
         fn file_content(&self) -> &str {
             match self {
                 // Valid
                 BiomeTestCase::NameOnly => {
                     r#"
-                    name = "Forest"
+                    name = "NameOnly"
                 "#
                 }
                 BiomeTestCase::WithEmptyTiles => {
                     r#"
-                    name = "Forest"
+                    name = "WithEmptyTiles"
 
                     [tiles]
                     "#
                 }
                 BiomeTestCase::WithSomeTiles => {
                     r#"
-                    name = "Forest"
+                    name = "WithSomeTiles"
 
                     [tiles]
                     grass = [1, 1, 1]
@@ -134,7 +151,7 @@ mod tests {
                 }
                 BiomeTestCase::WithTilesError => {
                     r#"
-                    name = "Forest"
+                    name = "WithTilesError"
 
                     [tiles]
                     grass = 0
@@ -146,11 +163,11 @@ mod tests {
         fn expectation(&self) -> Option<Biome> {
             match self {
                 BiomeTestCase::NameOnly => Some(Biome {
-                    name: "Forest".to_string(),
+                    name: "NameOnly".to_string(),
                     tiles: None,
                 }),
                 BiomeTestCase::WithSomeTiles => Some(Biome {
-                    name: "Forest".to_string(),
+                    name: "WithSomeTiles".to_string(),
                     tiles: Some(
                         [
                             ("grass".to_string(), [1, 1, 1]),
@@ -161,7 +178,7 @@ mod tests {
                     ),
                 }),
                 BiomeTestCase::WithEmptyTiles => Some(Biome {
-                    name: "Forest".to_string(),
+                    name: "WithEmptyTiles".to_string(),
                     tiles: Some([].into_iter().collect()),
                 }),
                 // Invalid
@@ -211,11 +228,39 @@ mod tests {
     }
 
     #[rstest]
-    fn test_load_biomes_success() {
+    fn test_load_biomes_success() -> Result<(), Error> {
+        // TODO: Write the file creation as a fixture ?
+        // tempdir must live during test execution otherwise temp directory is cleaned
+        let dir = tempdir()?;
+
+        let mut biome_test_cases = [BiomeTestCase::NameOnly, BiomeTestCase::WithSomeTiles];
+
+        for biome_test_case in &biome_test_cases {
+            let path = dir.path().join(format!("{}.toml", biome_test_case));
+            let mut file = File::create(&path)?;
+            writeln!(file, "{}", biome_test_case.file_content());
+        }
+
+        let biomes = load_biomes(dir.path()).expect("Valid biome files should load sucessfully");
+
+        for biome_test_case in &biome_test_cases {
+            let biome_name = biome_test_case.expectation().unwrap().name.to_string();
+            assert!(biomes.contains_key(&biome_name));
+            println!("{}", &biome_name);
+            assert_eq!(biomes[&biome_name], biome_test_case.expectation().unwrap());
+        }
+
+        Ok(())
+    }
+
+    #[rstest]
+    #[ignore]
+    fn test_load_biomes_fails_if_dupicate_names() {
         todo!()
     }
 
     #[rstest]
+    #[ignore]
     fn test_load_biomes_invalid() {
         todo!()
     }
