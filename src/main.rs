@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::{fs, thread::sleep, time::Duration};
 
+use bevy::input::mouse::MouseWheel;
 use bevy::reflect::Reflect;
 use bevy::{
     ecs::{query, reflect},
@@ -10,6 +11,7 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
 use bevy_fast_tilemap::prelude::*;
+use bevy_inspector_egui::bevy_egui;
 use bevy_inspector_egui::{
     bevy_egui::EguiPlugin, prelude::*, quick::ResourceInspectorPlugin, DefaultInspectorConfigPlugin,
 };
@@ -36,8 +38,44 @@ fn main() {
         .add_plugins(ResourceInspectorPlugin::<Configuration>::default())
         .add_systems(Startup, (setup))
         .add_systems(Update, update_map)
+        .add_systems(
+            PreUpdate,
+            absorb_egui_inputs.after(bevy_egui::systems::process_input_system),
+        )
         .observe(on_draw_map)
         .run();
+}
+
+fn absorb_egui_inputs(
+    mut contexts: bevy_egui::EguiContexts,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut mouse_wheel: ResMut<Events<MouseWheel>>,
+    mut keyboard: ResMut<ButtonInput<KeyCode>>,
+) {
+    let ctx = contexts.ctx_mut();
+    if !(ctx.wants_pointer_input() || ctx.is_pointer_over_area()) {
+        return;
+    }
+    let modifiers = [
+        KeyCode::SuperLeft,
+        KeyCode::SuperRight,
+        KeyCode::ControlLeft,
+        KeyCode::ControlRight,
+        KeyCode::AltLeft,
+        KeyCode::AltRight,
+        KeyCode::ShiftLeft,
+        KeyCode::ShiftRight,
+    ];
+
+    let pressed = modifiers.map(|key| keyboard.pressed(key).then_some(key));
+
+    mouse.reset_all();
+    mouse_wheel.clear();
+    keyboard.reset_all();
+
+    for key in pressed.into_iter().flatten() {
+        keyboard.press(key);
+    }
 }
 
 fn scale(value: f64, min: f64, max: f64, scale_min: f64, scale_max: f64) -> f64 {
