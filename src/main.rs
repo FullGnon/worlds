@@ -35,7 +35,7 @@ fn main() {
         .register_type::<Configuration>()
         .add_plugins(ResourceInspectorPlugin::<Configuration>::default())
         .add_systems(Startup, (setup))
-        .add_systems(Update, redraw_map)
+        .add_systems(Update, update_map)
         .observe(on_draw_map)
         .run();
 }
@@ -97,20 +97,14 @@ fn on_draw_map(
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<Map>>,
     config: Res<Configuration>,
+    maps: Query<&Handle<Map>>,
 ) {
     let perlin = Perlin::new(config.seed);
 
-    let tiles_texture = asset_server.load("biomes/temperate_forest/temperate_forest.png");
+    for map_handle in maps.iter() {
+        let map = materials.get_mut(map_handle).unwrap();
+        let mut m = map.indexer_mut();
 
-    let map = Map::builder(
-        // Map size
-        uvec2(config.width, config.height),
-        // Tile atlas
-        tiles_texture,
-        // Tile Size
-        config.tile_size,
-    )
-    .build_and_initialize(|m| {
         for x in 0..m.size().x {
             for y in 0..m.size().y {
                 let mut noise_value = 0.;
@@ -146,15 +140,16 @@ fn on_draw_map(
                 m.set(x, y, index as u32);
             }
         }
-    });
-
-    commands.spawn(MapBundleManaged {
-        material: materials.add(map),
-        ..default()
-    });
+    }
 }
 
-fn setup(mut commands: Commands, config: Res<Configuration>) {
+fn setup(
+    mut commands: Commands,
+    config: Res<Configuration>,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<Map>>,
+    maps: Query<&Handle<Map>>,
+) {
     commands
         .spawn(Camera2dBundle {
             /*transform: Transform::from_xyz(
@@ -166,19 +161,33 @@ fn setup(mut commands: Commands, config: Res<Configuration>) {
         })
         .insert(PanCam::default());
 
+    let tiles_texture = asset_server.load("biomes/temperate_forest/temperate_forest.png");
+
+    let map = Map::builder(
+        // Map size
+        uvec2(config.width, config.height),
+        // Tile atlas
+        tiles_texture,
+        // Tile Size
+        config.tile_size,
+    )
+    .build_and_set(|_| 2);
+
+    commands.spawn(MapBundleManaged {
+        material: materials.add(map),
+        ..default()
+    });
+
     commands.trigger(DrawMapEvent);
 }
 
-fn redraw_map(
+fn update_map(
     mut commands: Commands,
     config: Res<Configuration>,
-    query_tiles: Query<Entity, With<Tile>>,
+    mut materials: ResMut<Assets<Map>>,
+    maps: Query<&Handle<Map>>,
 ) {
     if config.is_changed() {
-        for entity in query_tiles.iter() {
-            commands.entity(entity).despawn();
-        }
-
         commands.trigger(DrawMapEvent);
     }
 }
