@@ -1,9 +1,14 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::error::Error;
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::{Path, PathBuf};
 use std::{fs, thread::sleep, time::Duration};
 
 use bevy::input::mouse::MouseWheel;
 use bevy::reflect::Reflect;
+use bevy::render::render_asset::RenderAssetUsages;
+use bevy::render::texture::{CompressedImageFormats, TextureError};
 use bevy::{
     ecs::{query, reflect},
     math::uvec2,
@@ -16,6 +21,7 @@ use bevy_inspector_egui::{
     bevy_egui::EguiPlugin, prelude::*, quick::ResourceInspectorPlugin, DefaultInspectorConfigPlugin,
 };
 use bevy_pancam::{PanCam, PanCamPlugin};
+use image::{GenericImage, ImageEncoder, ImageFormat, Pixel, PixelWithColorType, Rgb, RgbImage};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
 use serde::Deserialize;
@@ -23,6 +29,7 @@ use serde::Deserialize;
 mod biomes;
 
 use biomes::{load_biomes, Biome};
+use tempfile::{tempfile, Builder};
 
 fn main() {
     App::new()
@@ -36,7 +43,8 @@ fn main() {
         .init_resource::<Configuration>()
         .register_type::<Configuration>()
         .add_plugins(ResourceInspectorPlugin::<Configuration>::default())
-        .add_systems(Startup, (setup))
+        .init_resource::<TextureTileSet>()
+        .add_systems(Startup, setup)
         .add_systems(Update, update_map)
         .add_systems(
             PreUpdate,
@@ -106,11 +114,11 @@ impl Default for Configuration {
     fn default() -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            height: 100,
-            width: 100,
+            height: 400,
+            width: 400,
             tile_size: Vec2::new(16., 16.),
             seed: random(),
-            noise_scale: 100.,
+            noise_scale: 75.,
             octaves: 3,
             lacunarity: 2.,
             persistance: 0.5,
@@ -133,6 +141,7 @@ fn on_draw_map(
     trigger: Trigger<DrawMapEvent>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    texture_tileset: Res<TextureTileSet>,
     mut materials: ResMut<Assets<Map>>,
     config: Res<Configuration>,
     maps: Query<&Handle<Map>>,
@@ -145,35 +154,34 @@ fn on_draw_map(
 
         for x in 0..m.size().x {
             for y in 0..m.size().y {
-                let mut noise_value = 0.;
+                let mut elevation = 0.;
                 let scale = if config.noise_scale <= 0.0 {
                     0.0
                 } else {
                     config.noise_scale
                 };
+
                 for o in 0..config.octaves {
                     let offset_x: f64 = config.offset.x as f64;
                     let offset_y: f64 = config.offset.y as f64;
                     let frequency: f64 = config.lacunarity.powi(o);
                     let amplitude: f64 = config.persistance.powi(o);
-                    // TODO add octave offset (but why ?)
                     let sample_x = x as f64 / scale * frequency + offset_x;
                     let sample_y = y as f64 / scale * frequency + offset_y;
 
                     let perlin_value = perlin.get([sample_x, sample_y, 0.0]);
 
-                    noise_value += perlin_value * amplitude;
+                    elevation += perlin_value * amplitude;
                 }
 
-                let index =
-                    scale_to_index(noise_value, -1., 1., 0., config.biomes.len() as f64 - 1.)
-                        .clamp(0, config.biomes.len() - 1);
-
-                /*let color = Color::srgb(
-                    config.colors[0][0] as f32 / 255.,
-                    config.colors[0][1] as f32 / 255.,
-                    config.colors[0][2] as f32 / 255.,
-                );*/
+                let index = scale_to_index(
+                    elevation,
+                    -1.,
+                    1.,
+                    0.,
+                    texture_tileset.tiles.len() as f64 - 1.,
+                )
+                .clamp(0, texture_tileset.tiles.len() - 1);
 
                 m.set(x, y, index as u32);
             }
@@ -181,9 +189,30 @@ fn on_draw_map(
     }
 }
 
+struct TextureTile {
+    index: usize,
+    biome_name: String,
+    tile_name: String,
+}
+
+#[derive(Resource)]
+struct TextureTileSet {
+    path: PathBuf,
+    tiles: Vec<TextureTile>,
+}
+
+impl FromWorld for TextureTileSet {
+    fn from_world(world: &mut World) -> Self {
+        let config = world.resource::<Configuration>();
+
+        build_tiles_texture_from_biomes(&config.biomes).unwrap()
+    }
+}
+
 fn setup(
     mut commands: Commands,
     config: Res<Configuration>,
+    texture_tileset: Res<TextureTileSet>,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<Map>>,
     maps: Query<&Handle<Map>>,
@@ -199,7 +228,7 @@ fn setup(
         })
         .insert(PanCam::default());
 
-    let tiles_texture = asset_server.load("biomes/temperate_forest/temperate_forest.png");
+    let tiles_texture = asset_server.load(texture_tileset.path.clone());
 
     let map = Map::builder(
         // Map size
@@ -219,6 +248,53 @@ fn setup(
     commands.trigger(DrawMapEvent);
 }
 
+fn build_tiles_texture_from_biomes(
+    biomes: &HashMap<String, Biome>,
+) -> Result<TextureTileSet, Box<dyn Error>> {
+    // TODO !! Hardcoded number of tiles !!
+    let n_tile: u32 = 50;
+    let tile_size: u32 = 16;
+    let width: u32 = n_tile * tile_size;
+    let mut img_buffer = RgbImage::new(width, tile_size);
+
+    let mut idx_tile: usize = 0;
+    let mut tiles: Vec<TextureTile> = Vec::new();
+    println!("{:?}", biomes);
+    for (biome_name, biome) in biomes {
+        println!("{:?}", biome);
+        for (tile_name, &tile_color) in biome.tiles.clone().unwrap().iter() {
+            println!("{}", tile_name);
+            for x in 0..tile_size {
+                for y in 0..tile_size {
+                    img_buffer.put_pixel(x + (tile_size * idx_tile as u32), y, Rgb(tile_color));
+                }
+            }
+            tiles.push(TextureTile {
+                index: idx_tile,
+                biome_name: biome_name.clone(),
+                tile_name: tile_name.clone(),
+            });
+            idx_tile += 1;
+        }
+    }
+
+    // Create a temporary file
+    let mut tmp_file = Builder::new().suffix(".png").keep(true).tempfile()?;
+    println!("{:?}", &tmp_file);
+    let mut file = File::create(&tmp_file)?;
+
+    // Bind the writer to the opened file
+    let mut writer = BufWriter::new(file);
+
+    // Write bytes into the file as PNG format
+    img_buffer.write_to(&mut writer, ImageFormat::Png);
+
+    Ok(TextureTileSet {
+        path: tmp_file.into_temp_path().to_path_buf(),
+        tiles,
+    })
+}
+
 fn update_map(
     mut commands: Commands,
     config: Res<Configuration>,
@@ -227,5 +303,35 @@ fn update_map(
 ) {
     if config.is_changed() {
         commands.trigger(DrawMapEvent);
+    }
+}
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use rstest::rstest;
+
+    use crate::{biomes::Biome, build_tiles_texture_from_biomes};
+
+    #[rstest]
+    fn build_tiles_texture_from_biomes_succeed() {
+        let biomes: HashMap<String, Biome> = [(
+            "Forest".to_string(),
+            Biome {
+                name: "Forest".to_string(),
+                tiles: Some(
+                    [
+                        ("red".to_string(), [255u8, 0u8, 0u8]),
+                        ("green".to_string(), [0u8, 255u8, 0u8]),
+                        ("blue".to_string(), [0u8, 0u8, 255u8]),
+                    ]
+                    .into_iter()
+                    .collect::<HashMap<String, [u8; 3]>>(),
+                ),
+            },
+        )]
+        .into();
+
+        build_tiles_texture_from_biomes(&biomes);
     }
 }
