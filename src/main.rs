@@ -59,12 +59,14 @@ struct Configuration {
     octaves: i32,
     lacunarity: f64,
     persistance: f64,
+    offset: Vec2,
 
     biomes: HashMap<String, Biome>,
 }
 
 impl Default for Configuration {
     fn default() -> Self {
+        let mut rng = rand::thread_rng();
         Self {
             height: 100,
             width: 100,
@@ -74,6 +76,10 @@ impl Default for Configuration {
             octaves: 3,
             lacunarity: 2.,
             persistance: 0.5,
+            offset: Vec2::new(
+                rng.gen_range(-100000..100000) as f32,
+                rng.gen_range(-100000..100000) as f32,
+            ),
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
         }
     }
@@ -94,7 +100,7 @@ fn on_draw_map(
 ) {
     let perlin = Perlin::new(config.seed);
 
-    let tiles_texture = asset_server.load("temperate_forest/temperate_forest.png");
+    let tiles_texture = asset_server.load("biomes/temperate_forest/temperate_forest.png");
 
     let map = Map::builder(
         // Map size
@@ -114,11 +120,13 @@ fn on_draw_map(
                     config.noise_scale
                 };
                 for o in 0..config.octaves {
+                    let offset_x: f64 = config.offset.x as f64;
+                    let offset_y: f64 = config.offset.y as f64;
                     let frequency: f64 = config.lacunarity.powi(o);
                     let amplitude: f64 = config.persistance.powi(o);
                     // TODO add octave offset (but why ?)
-                    let sample_x = x as f64 / scale * frequency;
-                    let sample_y = y as f64 / scale * frequency;
+                    let sample_x = x as f64 / scale * frequency + offset_x;
+                    let sample_y = y as f64 / scale * frequency + offset_y;
 
                     let perlin_value = perlin.get([sample_x, sample_y, 0.0]);
 
