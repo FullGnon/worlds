@@ -1,5 +1,8 @@
-use std::{thread::sleep, time::Duration};
+use std::collections::HashMap;
+use std::path::Path;
+use std::{fs, thread::sleep, time::Duration};
 
+use bevy::reflect::Reflect;
 use bevy::{
     ecs::{query, reflect},
     math::uvec2,
@@ -13,6 +16,11 @@ use bevy_inspector_egui::{
 use bevy_pancam::{PanCam, PanCamPlugin};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
+use serde::Deserialize;
+
+mod biomes;
+
+use biomes::{load_biomes, Biome};
 
 fn main() {
     App::new()
@@ -52,7 +60,7 @@ struct Configuration {
     lacunarity: f64,
     persistance: f64,
 
-    colors: Vec<[usize; 3]>,
+    biomes: HashMap<String, Biome>,
 }
 
 impl Default for Configuration {
@@ -66,20 +74,7 @@ impl Default for Configuration {
             octaves: 3,
             lacunarity: 2.,
             persistance: 0.5,
-            colors: [
-                [35, 30, 50], // Ocean
-                [61, 75, 100],
-                [126, 148, 162],
-                [188, 170, 108], // Sand
-                [178, 183, 160], // Grass
-                [147, 161, 135],
-                [81, 80, 49],
-                [81, 80, 49], // Mountains
-                [163, 151, 135],
-                [71, 64, 59],
-                [255, 255, 255], // Snow
-            ]
-            .to_vec(),
+            biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
         }
     }
 }
@@ -99,7 +94,7 @@ fn on_draw_map(
 ) {
     let perlin = Perlin::new(config.seed);
 
-    let tiles_texture = asset_server.load("pixel_tiles_16.png");
+    let tiles_texture = asset_server.load("temperate_forest/temperate_forest.png");
 
     let map = Map::builder(
         // Map size
@@ -131,8 +126,8 @@ fn on_draw_map(
                 }
 
                 let index =
-                    scale_to_index(noise_value, -1., 1., 0., config.colors.len() as f64 - 1.)
-                        .clamp(0, config.colors.len() - 1);
+                    scale_to_index(noise_value, -1., 1., 0., config.biomes.len() as f64 - 1.)
+                        .clamp(0, config.biomes.len() - 1);
 
                 /*let color = Color::srgb(
                     config.colors[0][0] as f32 / 255.,

@@ -1,17 +1,27 @@
 name = "temperate_forest"
 
 [conditions]
-latitude = [35, 55]                # Latitude between 35° and 55°
+latitude = { min = 35, max = 55 }         # Latitude between 35° and 55°
 day_temperature = { min = 10, max = 25 }  # Daytime temperatures in degrees Celsius
-night_temperature = { min = 0, max = 15 }   # Nighttime temperatures in degrees Celsius
-precipitation = 1000                # Annual precipitation in mm
-altitude = { min = 0, max = 2000 }  # Altitude in meters
+night_temperature = { min = 0, max = 15 } # Nighttime temperatures in degrees Celsius
+precipitation = { min = 500, max = 1000 } # Annual precipitation in mm
+altitude = { min = 0, max = 2000 }        # Altitude in meters
 
-[fauna]                              # Section for animals
-species = ["deer", "fox", "squirrel", "owl"]  # Common animals in the temperate forest
+[fauna] # Section for animals
+species = [
+    "deer",
+    "fox",
+    "squirrel",
+    "owl",
+] # Common animals in the temperate forest
 
-[flora]                              # Section for plants
-species = ["oak_tree", "maple_tree", "fern", "wildflowers"]  # Common plants in the temperate forest
+[flora] # Section for plants
+species = [
+    "oak_tree",
+    "maple_tree",
+    "fern",
+    "wildflowers",
+] # Common plants in the temperate forest
 
 [tiles]
 grass = [64, 114, 49]
