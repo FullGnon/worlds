@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 #[derive(Reflect, Deserialize, Debug, PartialEq, Clone)]
 pub(crate) struct Biome {
-    name: String,
+    pub name: String,
     //conditions: Option<HashMap<String, HashMap<String, usize>>>,
     //fauna: Option<HashMap<String, Vec<String>>>,
     //flora: Option<HashMap<String, Vec<String>>>,

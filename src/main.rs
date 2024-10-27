@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
+use std::hash::Hash;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::{fs, thread::sleep, time::Duration};
@@ -100,14 +101,20 @@ struct Configuration {
     width: u32,
     tile_size: Vec2,
 
+    elevation_gen: PerlinConfiguration,
+    biome_gen: PerlinConfiguration,
+
+    biomes: HashMap<String, Biome>,
+}
+
+#[derive(Reflect)]
+struct PerlinConfiguration {
     seed: u32,
     noise_scale: f64,
     octaves: i32,
     lacunarity: f64,
     persistance: f64,
     offset: Vec2,
-
-    biomes: HashMap<String, Biome>,
 }
 
 impl Default for Configuration {
@@ -117,15 +124,28 @@ impl Default for Configuration {
             height: 400,
             width: 400,
             tile_size: Vec2::new(16., 16.),
-            seed: random(),
-            noise_scale: 75.,
-            octaves: 3,
-            lacunarity: 2.,
-            persistance: 0.5,
-            offset: Vec2::new(
-                rng.gen_range(-100000..100000) as f32,
-                rng.gen_range(-100000..100000) as f32,
-            ),
+            elevation_gen: PerlinConfiguration {
+                seed: random(),
+                noise_scale: 20.,
+                octaves: 3,
+                lacunarity: 2.,
+                persistance: 0.5,
+                offset: Vec2::new(
+                    rng.gen_range(-100000..100000) as f32,
+                    rng.gen_range(-100000..100000) as f32,
+                ),
+            },
+            biome_gen: PerlinConfiguration {
+                seed: random(),
+                noise_scale: 100.,
+                octaves: 3,
+                lacunarity: 1.,
+                persistance: 0.7,
+                offset: Vec2::new(
+                    rng.gen_range(-100000..100000) as f32,
+                    rng.gen_range(-100000..100000) as f32,
+                ),
+            },
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
         }
     }
@@ -146,59 +166,100 @@ fn on_draw_map(
     config: Res<Configuration>,
     maps: Query<&Handle<Map>>,
 ) {
-    let perlin = Perlin::new(config.seed);
-
     for map_handle in maps.iter() {
         let map = materials.get_mut(map_handle).unwrap();
         let mut m = map.indexer_mut();
 
+        let perlin_elevation = Perlin::new(config.elevation_gen.seed);
+        let perlin_biome = Perlin::new(config.biome_gen.seed);
+
+        // x0..xN => W - E
+        // y0..yN => S - N
         for x in 0..m.size().x {
             for y in 0..m.size().y {
-                let mut elevation = 0.;
-                let scale = if config.noise_scale <= 0.0 {
+                let mut elevation_value = 0.;
+                let elevation_scale = if config.elevation_gen.noise_scale <= 0.0 {
                     0.0
                 } else {
-                    config.noise_scale
+                    config.elevation_gen.noise_scale
                 };
 
-                for o in 0..config.octaves {
-                    let offset_x: f64 = config.offset.x as f64;
-                    let offset_y: f64 = config.offset.y as f64;
-                    let frequency: f64 = config.lacunarity.powi(o);
-                    let amplitude: f64 = config.persistance.powi(o);
-                    let sample_x = x as f64 / scale * frequency + offset_x;
-                    let sample_y = y as f64 / scale * frequency + offset_y;
+                for o in 0..config.elevation_gen.octaves {
+                    let offset_x: f64 = config.elevation_gen.offset.x as f64;
+                    let offset_y: f64 = config.elevation_gen.offset.y as f64;
+                    let frequency: f64 = config.elevation_gen.lacunarity.powi(o);
+                    let amplitude: f64 = config.elevation_gen.persistance.powi(o);
+                    let sample_x = x as f64 / elevation_scale * frequency + offset_x;
+                    let sample_y = y as f64 / elevation_scale * frequency + offset_y;
 
-                    let perlin_value = perlin.get([sample_x, sample_y, 0.0]);
-
-                    elevation += perlin_value * amplitude;
+                    let perlin_value = perlin_elevation.get([sample_x, sample_y, 0.0]);
+                    elevation_value += perlin_value * amplitude;
                 }
 
-                let index = scale_to_index(
-                    elevation,
-                    -1.,
-                    1.,
-                    0.,
-                    texture_tileset.tiles.len() as f64 - 1.,
-                )
-                .clamp(0, texture_tileset.tiles.len() - 1);
+                let biome_scale = if config.biome_gen.noise_scale <= 0.0 {
+                    0.0
+                } else {
+                    config.biome_gen.noise_scale
+                };
+                let mut biome_value = 0.;
+                let perlin = Perlin::new(config.biome_gen.seed);
+                for o in 0..config.biome_gen.octaves {
+                    let offset_x: f64 = config.biome_gen.offset.x as f64;
+                    let offset_y: f64 = config.biome_gen.offset.y as f64;
+                    let frequency: f64 = config.biome_gen.lacunarity.powi(o);
+                    let amplitude: f64 = config.biome_gen.persistance.powi(o);
+                    let sample_x = x as f64 / biome_scale * frequency + offset_x;
+                    let sample_y = y as f64 / biome_scale * frequency + offset_y;
 
-                m.set(x, y, index as u32);
+                    let perlin_value = perlin_biome.get([sample_x, sample_y, 0.0]);
+                    biome_value += perlin_value * amplitude;
+                }
+
+                let tile_index = select_tile_index(&texture_tileset, elevation_value, biome_value);
+
+                m.set(x, y, tile_index as u32);
             }
         }
     }
 }
 
+fn select_tile_index(
+    texture_tileset: &TextureTileSet,
+    elevation_value: f64,
+    biome_value: f64,
+) -> usize {
+    let biome_index = scale_to_index(
+        biome_value,
+        -1_f64,
+        1_f64,
+        0_f64,
+        texture_tileset.biomes_mapping.len() as f64 - 1.,
+    )
+    .clamp(0, texture_tileset.biomes_mapping.len() - 1);
+    let (min_index, n_tiles) = texture_tileset.biomes_mapping[biome_index].into();
+
+    scale_to_index(
+        elevation_value,
+        -1.,
+        1.,
+        min_index as f64,
+        (min_index + n_tiles) as f64 - 1.,
+    )
+    .clamp(min_index, min_index + n_tiles - 1)
+}
+
+#[derive(Debug)]
 struct TextureTile {
     index: usize,
     biome_name: String,
     tile_name: String,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Debug)]
 struct TextureTileSet {
     path: PathBuf,
-    tiles: Vec<TextureTile>,
+    tileset: Vec<TextureTile>,
+    biomes_mapping: Vec<[usize; 2]>,
 }
 
 impl FromWorld for TextureTileSet {
@@ -258,29 +319,34 @@ fn build_tiles_texture_from_biomes(
     let mut img_buffer = RgbImage::new(width, tile_size);
 
     let mut idx_tile: usize = 0;
-    let mut tiles: Vec<TextureTile> = Vec::new();
-    println!("{:?}", biomes);
-    for (biome_name, biome) in biomes {
-        println!("{:?}", biome);
-        for (tile_name, &tile_color) in biome.tiles.clone().unwrap().iter() {
+    let mut biomes_mapping = Vec::new();
+    let mut tileset: Vec<TextureTile> = Vec::new();
+    let mut biome_current_index = 0_usize;
+    for (biome_name, biome) in biomes.iter() {
+        if biome.tiles.is_none() {
+            continue;
+        }
+        let biome_tiles = biome.tiles.clone().unwrap();
+        for (tile_name, &tile_color) in biome_tiles.iter() {
             println!("{}", tile_name);
             for x in 0..tile_size {
                 for y in 0..tile_size {
                     img_buffer.put_pixel(x + (tile_size * idx_tile as u32), y, Rgb(tile_color));
                 }
             }
-            tiles.push(TextureTile {
+            tileset.push(TextureTile {
                 index: idx_tile,
                 biome_name: biome_name.clone(),
                 tile_name: tile_name.clone(),
             });
             idx_tile += 1;
         }
+        biomes_mapping.push([biome_current_index, idx_tile - biome_current_index]);
+        biome_current_index = idx_tile;
     }
 
     // Create a temporary file
     let mut tmp_file = Builder::new().suffix(".png").keep(true).tempfile()?;
-    println!("{:?}", &tmp_file);
     let mut file = File::create(&tmp_file)?;
 
     // Bind the writer to the opened file
@@ -289,9 +355,11 @@ fn build_tiles_texture_from_biomes(
     // Write bytes into the file as PNG format
     img_buffer.write_to(&mut writer, ImageFormat::Png);
 
+    let path = tmp_file.into_temp_path().to_path_buf();
     Ok(TextureTileSet {
-        path: tmp_file.into_temp_path().to_path_buf(),
-        tiles,
+        path,
+        tileset,
+        biomes_mapping,
     })
 }
 
@@ -332,6 +400,8 @@ mod tests {
         )]
         .into();
 
-        build_tiles_texture_from_biomes(&biomes);
+        let t = build_tiles_texture_from_biomes(&biomes).unwrap();
+
+        println!("{:?}", t);
     }
 }
