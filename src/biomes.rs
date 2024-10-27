@@ -79,18 +79,23 @@ mod tests {
     use noise::Billow;
     use rstest::{fixture, rstest};
     use std::{
+        borrow::Borrow,
         fmt::Display,
-        fs::File,
+        fs::{remove_dir_all, remove_file, File},
         io::{Error, Write},
-        path::PathBuf,
+        path::{self, Path, PathBuf},
         time::Duration,
     };
-    use tempfile::{env::temp_dir, tempdir, tempfile};
+    use tempfile::{
+        env::{self, temp_dir},
+        tempdir, tempfile, Builder, TempDir,
+    };
 
     use crate::biomes::load_biome;
 
     use super::{load_biomes, Biome, LoadBiomeError};
 
+    #[derive(Clone)]
     enum BiomeTestCase {
         // Valid test cases
         NameOnly,
@@ -189,22 +194,47 @@ mod tests {
         }
     }
 
+    fn materialize_biome_test_case(
+        biome_test_case: &BiomeTestCase,
+        root_path: Option<&Path>,
+    ) -> Result<PathBuf, Error> {
+        let default_tmp_dir = tempfile::env::temp_dir();
+        let root_path = root_path.unwrap_or(default_tmp_dir.as_path());
+        let tmp_file = Builder::new()
+            .suffix(".toml")
+            .keep(true)
+            .tempfile_in(root_path)?;
+
+        let mut file = File::create(&tmp_file)?;
+        writeln!(file, "{}", biome_test_case.file_content());
+
+        Ok(tmp_file.into_temp_path().to_path_buf())
+    }
+
+    fn materialize_biome_test_cases(
+        biome_test_cases: &Vec<BiomeTestCase>,
+    ) -> Result<PathBuf, Error> {
+        let tmp_dir = Builder::new().keep(true).tempdir()?;
+        let tmp_path = tmp_dir.into_path();
+
+        for biome_test_case in biome_test_cases {
+            materialize_biome_test_case(biome_test_case, Some(tmp_path.as_path()));
+        }
+
+        Ok(tmp_path)
+    }
+
     #[rstest]
     #[case::name_only(BiomeTestCase::NameOnly)]
     #[case::with_empty_tiles(BiomeTestCase::WithEmptyTiles)]
     #[case::with_some_tiles(BiomeTestCase::WithSomeTiles)]
     fn test_load_biome_success(#[case] biome_test_case: BiomeTestCase) -> Result<(), Error> {
-        // TODO: Write the file creation as a fixture ?
-        // tempdir must live during test execution otherwise temp directory is cleaned
-        let dir = tempdir()?;
-        let path = dir.path().join("biome.toml");
-        let mut file = File::create(&path)?;
-        writeln!(file, "{}", biome_test_case.file_content());
-
-        let biome = load_biome(&path).expect("Valid biome file should load successfully");
+        let filepath = materialize_biome_test_case(&biome_test_case, None)?;
+        let biome = load_biome(&filepath).expect("Valid biome file should load successfully");
 
         assert_eq!(biome, biome_test_case.expectation().unwrap());
 
+        remove_file(filepath)?;
         Ok(())
     }
 
@@ -213,49 +243,36 @@ mod tests {
     #[case::invalid_format(BiomeTestCase::InvalidFormat)]
     #[case::with_tiles_error(BiomeTestCase::WithTilesError)]
     fn test_load_biome_invalid(#[case] biome_test_case: BiomeTestCase) -> Result<(), Error> {
-        // TODO: Write the file creation as a fixture ?
-        // tempdir must live during test execution otherwise temp directory is cleaned
-        let dir = tempdir()?;
-        let path = dir.path().join("biome.toml");
-        let mut file = File::create(&path)?;
-        writeln!(file, "{}", biome_test_case.file_content());
+        let filepath = materialize_biome_test_case(&biome_test_case, None)?;
+        let biome = load_biome(&filepath);
 
-        let biome = load_biome(&path);
-        // TODO: check error type is the one expected by biome_test_case
         assert!(biome.is_err());
 
+        remove_file(filepath)?;
         Ok(())
     }
 
     #[rstest]
     fn test_load_biomes_success() -> Result<(), Error> {
-        // TODO: Write the file creation as a fixture ?
-        // tempdir must live during test execution otherwise temp directory is cleaned
-        let dir = tempdir()?;
-
-        let mut biome_test_cases = [BiomeTestCase::NameOnly, BiomeTestCase::WithSomeTiles];
+        let mut biome_test_cases = [BiomeTestCase::NameOnly, BiomeTestCase::WithSomeTiles].to_vec();
+        let path = materialize_biome_test_cases(&biome_test_cases)?;
+        let biomes = load_biomes(&path).expect("Valid biome files should load sucessfully");
 
         for biome_test_case in &biome_test_cases {
-            let path = dir.path().join(format!("{}.toml", biome_test_case));
-            let mut file = File::create(&path)?;
-            writeln!(file, "{}", biome_test_case.file_content());
-        }
-
-        let biomes = load_biomes(dir.path()).expect("Valid biome files should load sucessfully");
-
-        for biome_test_case in &biome_test_cases {
-            let biome_name = biome_test_case.expectation().unwrap().name.to_string();
+            let biome = biome_test_case.expectation().unwrap();
+            let biome_name = biome.name.to_string();
             assert!(biomes.contains_key(&biome_name));
             println!("{}", &biome_name);
-            assert_eq!(biomes[&biome_name], biome_test_case.expectation().unwrap());
+            assert_eq!(biomes[&biome_name], biome);
         }
 
+        remove_dir_all(path)?;
         Ok(())
     }
 
     #[rstest]
     #[ignore]
-    fn test_load_biomes_fails_if_dupicate_names() {
+    fn test_load_biomes_skip_dupicates_by_name() {
         todo!()
     }
 
