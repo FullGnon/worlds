@@ -70,7 +70,9 @@ pub(crate) fn load_biomes(path: &Path) -> Result<HashMap<String, Biome>, io::Err
                         };
                     }
                     Err(e) => {
-                        eprintln!("Error loading biome: {}", e);
+                        eprintln!("Error loading biome: {:?}", path);
+                        #[cfg(debug_assertions)]
+                        eprintln!("{}", e);
                     }
                 }
             }
@@ -293,8 +295,13 @@ mod tests {
     }
 
     #[rstest]
-    #[ignore]
-    fn test_load_biomes_invalid() {
-        todo!()
+    fn test_load_biomes_invalid() -> Result<(), Error> {
+        let mut biome_test_cases = [BiomeTestCase::NameOnly, BiomeTestCase::InvalidFormat].to_vec();
+
+        let path = materialize_biome_test_cases(&biome_test_cases)?;
+        let biomes = load_biomes(&path).expect("Skip invalid biomes");
+
+        assert_eq!(biomes.len(), 1);
+        Ok(())
     }
 }
