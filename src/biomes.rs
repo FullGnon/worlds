@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     fmt,
     fs::{read_dir, read_to_string},
     io,
@@ -9,7 +9,7 @@ use std::{
 use bevy::reflect::Reflect;
 use serde::Deserialize;
 
-#[derive(Reflect, Deserialize, Debug, PartialEq)]
+#[derive(Reflect, Deserialize, Debug, PartialEq, Clone)]
 pub(crate) struct Biome {
     name: String,
     //conditions: Option<HashMap<String, HashMap<String, usize>>>,
@@ -49,26 +49,36 @@ pub(crate) fn load_biomes(path: &Path) -> Result<HashMap<String, Biome>, io::Err
         ));
     }
 
-    let biomes = read_dir(path)?
-        .filter_map(|entry| match entry {
+    let mut biomes: HashMap<String, Biome> = HashMap::new();
+
+    for entry in read_dir(path)? {
+        match entry {
             Ok(entry) => {
                 let path = entry.path();
                 match load_biome(&path) {
                     Ok(biome) => {
-                        println!("Biome loaded successfully: {:?}", biome);
+                        let biome_name = biome.name.clone();
 
-                        Some((biome.name.clone(), biome))
+                        match biomes.entry(biome.name.clone()) {
+                            Entry::Occupied(o) => {
+                                eprintln!("Warning: Duplicate Biome found '{}'", biome_name);
+                            }
+                            Entry::Vacant(v) => {
+                                v.insert(biome);
+                                println!("Biome loaded successfully: '{}'", biome_name);
+                            }
+                        };
                     }
                     Err(e) => {
                         eprintln!("Error loading biome: {}", e);
-
-                        None
                     }
                 }
             }
-            Err(e) => None,
-        })
-        .collect();
+            Err(e) => {
+                eprintln!("Error read dir {}", e);
+            }
+        }
+    }
 
     Ok(biomes)
 }
@@ -258,6 +268,7 @@ mod tests {
         let path = materialize_biome_test_cases(&biome_test_cases)?;
         let biomes = load_biomes(&path).expect("Valid biome files should load sucessfully");
 
+        assert_eq!(biomes.len(), biome_test_cases.len());
         for biome_test_case in &biome_test_cases {
             let biome = biome_test_case.expectation().unwrap();
             let biome_name = biome.name.to_string();
@@ -271,9 +282,14 @@ mod tests {
     }
 
     #[rstest]
-    #[ignore]
-    fn test_load_biomes_skip_dupicates_by_name() {
-        todo!()
+    fn test_load_biomes_skip_dupicates_by_name() -> Result<(), Error> {
+        let mut biome_test_cases = [BiomeTestCase::NameOnly, BiomeTestCase::NameOnly].to_vec();
+
+        let path = materialize_biome_test_cases(&biome_test_cases)?;
+        let biomes = load_biomes(&path).expect("Skip duplicated biomes");
+
+        assert_eq!(biomes.len(), 1);
+        Ok(())
     }
 
     #[rstest]
