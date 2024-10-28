@@ -1,0 +1,9 @@
+name = "Land"
+enabled = true
+
+[tiles]
+sand = [245, 199, 121]
+grass = [168, 199, 167]
+forest = [117, 145, 120]
+mountain = [153, 145, 132]
+snow = [255, 255, 255]

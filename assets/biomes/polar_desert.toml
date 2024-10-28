@@ -1,17 +1,22 @@
 name = "polar_desert"
+enabled = false
 
 [conditions]
-latitude = [60, 90]                # latitude between 60° and 90°
-day_temperature = { min = -20, max = 5 }  # Daytime temperatures in degrees Celsius
-night_temperature = { min = -40, max = -10 }  # Nighttime temperatures in degrees Celsius
-precipitation = 250                 # Annual precipitation in mm (mostly snow)
-altitude = { min = 0, max = 3000 }  # Altitude in meters
+latitude = [60, 90]                          # latitude between 60° and 90°
+day_temperature = { min = -20, max = 5 }     # Daytime temperatures in degrees Celsius
+night_temperature = { min = -40, max = -10 } # Nighttime temperatures in degrees Celsius
+precipitation = 250                          # Annual precipitation in mm (mostly snow)
+altitude = { min = 0, max = 3000 }           # Altitude in meters
 
-[fauna]                                         # Section for animals
-species = ["polar_bear", "arctic_fox", "seal"]  # Animals found in the polar desert
+[fauna] # Section for animals
+species = [
+    "polar_bear",
+    "arctic_fox",
+    "seal",
+] # Animals found in the polar desert
 
 [tiles]
-polar_desert_snow = [255, 255, 255]             # snow tile
-polar_desert_ice = [214, 245, 255]              # ice tile
-polar_desert_stone = [138, 138, 138]            # rocky surface
-polar_desert_water = [28, 93, 102]              # water tile (melting ice)
+polar_desert_snow = [255, 255, 255]  # snow tile
+polar_desert_ice = [214, 245, 255]   # ice tile
+polar_desert_stone = [138, 138, 138] # rocky surface
+polar_desert_water = [28, 93, 102]   # water tile (melting ice)

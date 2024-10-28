@@ -1,4 +1,5 @@
 name = "savanna"
+enabled = false
 
 [conditions]
 latitude = [10, 20]                        # Latitude between 10° and 20°

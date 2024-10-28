@@ -1,4 +1,5 @@
 name = "temperate_forest"
+enabled = false
 
 [conditions]
 latitude = { min = 35, max = 55 }         # Latitude between 35° and 55°

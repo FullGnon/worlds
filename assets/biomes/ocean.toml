@@ -1,4 +1,7 @@
 name = "Ocean"
+enabled = true
 
 [tiles]
-water = [0, 0, 255]
+surface_water = [189, 213, 215]
+mid_water = [103, 151, 165]
+deep_water = [67, 99, 110]
