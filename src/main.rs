@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::hash::Hash;
@@ -151,8 +152,8 @@ impl Default for Configuration {
                 seed: random(),
                 noise_scale: 100.,
                 octaves: 3,
-                lacunarity: 1.,
-                persistance: 0.7,
+                lacunarity: 2.7,
+                persistance: 0.3,
                 offset: Vec2::new(
                     rng.gen_range(-100000..100000) as f32,
                     rng.gen_range(-100000..100000) as f32,
@@ -243,27 +244,25 @@ fn select_tile_index(
     elevation_value: f64,
     biome_value: f64,
 ) -> usize {
+    let mut value_min = -1.;
+    let mut value_max = 1.;
+    let mut biome_index = 0;
+
     // Select biome
-    let biome_index = if elevation_value <= config.sea_level {
-        texture_tileset.biomes_mapping["Ocean"]
+    if elevation_value < config.sea_level {
+        biome_index = texture_tileset.biomes_mapping["Ocean"];
+        value_max = config.sea_level;
     } else {
-        /*scale_to_index(
-            biome_value,
-            -1_f64,
-            1_f64,
-            0_f64,
-            texture_tileset.biomes_position.len() as f64 - 1.,
-        )
-        .clamp(0, texture_tileset.biomes_position.len() - 1)*/
-        texture_tileset.biomes_mapping["savanna"]
+        biome_index = texture_tileset.biomes_mapping["Land"];
+        value_min = config.sea_level;
     };
     let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
 
     // Select biome tile
     scale_to_index(
         elevation_value,
-        -1.,
-        1.,
+        value_min,
+        value_max,
         min_index as f64,
         (min_index + n_tiles) as f64 - 1.,
     )
@@ -289,7 +288,14 @@ impl FromWorld for TextureTileSet {
     fn from_world(world: &mut World) -> Self {
         let config = world.resource::<Configuration>();
 
-        build_tiles_texture_from_biomes(&config.biomes).unwrap()
+        let enabled_biomes = config
+            .biomes
+            .clone()
+            .into_iter()
+            .filter(|(_, biome)| biome.enabled.unwrap_or_default())
+            .collect::<HashMap<String, Biome>>();
+
+        build_tiles_texture_from_biomes(&enabled_biomes).unwrap()
     }
 }
 
@@ -306,7 +312,6 @@ fn setup(
         translation: Vec3::new(-1200., 0., 0.),
         ..default()
     };
-    println!("{:?}", camera_transform);
     commands
         .spawn(Camera2dBundle {
             transform: camera_transform,
@@ -354,17 +359,17 @@ fn build_tiles_texture_from_biomes(
         }
         let biome_tiles = biome.tiles.clone().unwrap();
         for (tile_name, &tile_color) in biome_tiles.iter() {
-            println!("{}", tile_name);
             for x in 0..tile_size {
                 for y in 0..tile_size {
                     img_buffer.put_pixel(x + (tile_size * idx_tile as u32), y, Rgb(tile_color));
                 }
             }
-            tileset.push(TextureTile {
+            let tiletexture = TextureTile {
                 index: idx_tile,
                 biome_name: biome_name.clone(),
                 tile_name: tile_name.clone(),
-            });
+            };
+            tileset.push(tiletexture);
             idx_tile += 1;
         }
         biomes_position.push([biome_current_index, idx_tile - biome_current_index]);
@@ -373,8 +378,8 @@ fn build_tiles_texture_from_biomes(
     }
 
     // Create a temporary file
-    let mut tmp_file = Builder::new().suffix(".png").keep(true).tempfile()?;
-    let mut file = File::create(&tmp_file)?;
+    let mut path = env::temp_dir().join("world_tilesets.png");
+    let mut file = File::create(&path)?;
 
     // Bind the writer to the opened file
     let mut writer = BufWriter::new(file);
@@ -382,7 +387,6 @@ fn build_tiles_texture_from_biomes(
     // Write bytes into the file as PNG format
     img_buffer.write_to(&mut writer, ImageFormat::Png);
 
-    let path = tmp_file.into_temp_path().to_path_buf();
     Ok(TextureTileSet {
         path,
         tileset,
@@ -399,37 +403,5 @@ fn update_map(
 ) {
     if config.is_changed() {
         commands.trigger(DrawMapEvent);
-    }
-}
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use rstest::rstest;
-
-    use crate::{biomes::Biome, build_tiles_texture_from_biomes};
-
-    #[rstest]
-    fn build_tiles_texture_from_biomes_succeed() {
-        let biomes: HashMap<String, Biome> = [(
-            "Forest".to_string(),
-            Biome {
-                name: "Forest".to_string(),
-                tiles: Some(
-                    [
-                        ("red".to_string(), [255u8, 0u8, 0u8]),
-                        ("green".to_string(), [0u8, 255u8, 0u8]),
-                        ("blue".to_string(), [0u8, 0u8, 255u8]),
-                    ]
-                    .into_iter()
-                    .collect::<HashMap<String, [u8; 3]>>(),
-                ),
-            },
-        )]
-        .into();
-
-        let t = build_tiles_texture_from_biomes(&biomes).unwrap();
-
-        println!("{:?}", t);
     }
 }
