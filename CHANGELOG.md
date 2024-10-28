@@ -8,10 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
- 
+
+- Add basic CI worklows, to validate PR and release a tag
 - Biome mod for loading and testing them
 - First biomes and their settings
-- Use of bevy fast tilemap
+
+### Changed
+
+- Use of bevy fast tilemap instead of bevy ecs tilemap, to gain performance
 
 ## [0.1.0] - 2024-10-22
 
