@@ -11,11 +11,12 @@ use serde::Deserialize;
 
 #[derive(Reflect, Deserialize, Debug, PartialEq, Clone)]
 pub(crate) struct Biome {
-    name: String,
+    pub name: String,
+    pub enabled: Option<bool>,
     //conditions: Option<HashMap<String, HashMap<String, usize>>>,
     //fauna: Option<HashMap<String, Vec<String>>>,
     //flora: Option<HashMap<String, Vec<String>>>,
-    tiles: Option<HashMap<String, [usize; 3]>>,
+    pub tiles: Option<HashMap<String, [u8; 3]>>,
 }
 
 #[derive(Debug)]
@@ -163,7 +164,7 @@ mod tests {
                 BiomeTestCase::InvalidFormat => r#"{"foo", "bar"}"#,
                 BiomeTestCase::MissingName => {
                     r#"
-                    foo = "bar"
+                    enabled = true
                     "#
                 }
                 BiomeTestCase::WithTilesError => {
@@ -181,10 +182,12 @@ mod tests {
             match self {
                 BiomeTestCase::NameOnly => Some(Biome {
                     name: "NameOnly".to_string(),
+                    enabled: Some(true),
                     tiles: None,
                 }),
                 BiomeTestCase::WithSomeTiles => Some(Biome {
                     name: "WithSomeTiles".to_string(),
+                    enabled: Some(true),
                     tiles: Some(
                         [
                             ("grass".to_string(), [1, 1, 1]),
@@ -196,6 +199,7 @@ mod tests {
                 }),
                 BiomeTestCase::WithEmptyTiles => Some(Biome {
                     name: "WithEmptyTiles".to_string(),
+                    enabled: Some(true),
                     tiles: Some([].into_iter().collect()),
                 }),
                 // Invalid

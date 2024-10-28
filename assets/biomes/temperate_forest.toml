@@ -1,4 +1,5 @@
 name = "temperate_forest"
+enabled = false
 
 [conditions]
 latitude = { min = 35, max = 55 }         # Latitude between 35° and 55°
@@ -24,9 +25,9 @@ species = [
 ] # Common plants in the temperate forest
 
 [tiles]
+deep_water = [96, 145, 205]
+shallow_water = [133, 221, 233]
 grass = [64, 114, 49]
 soil = [127, 69, 36]
 humus = [65, 40, 11]
 stone = [139, 152, 148]
-shallow_water = [133, 221, 233]
-deep_water = [96, 145, 205]

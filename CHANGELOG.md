@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2024-10-28
+
+### Added
+
+- Offset on noise maps, another parameter to randomize render
+- Sea level parameter to determine the elevation where end ocean and start land
+- Enable/Disable biome in their definition
+
+### Fixed
+
+- Tilemap is now updated at DrawMapEvent, and not recreated which led to stacking them
+- Absorbing input events on Egui window to avoid moving the map as well
+
 ## [0.1.2] - 2024-10-28
 
 ### Added

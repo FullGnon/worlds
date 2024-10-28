@@ -1,21 +1,32 @@
 name = "savanna"
+enabled = false
 
 [conditions]
-latitude = [10, 20]                # Latitude between 10° and 20°
-day_temperature = { min = 20, max = 40 }  # Daytime temperatures in degrees Celsius
-night_temperature = { min = 10, max = 25 }  # Nighttime temperatures in degrees Celsius
-precipitation = 750                 # Annual precipitation in mm (seasonal rains)
-altitude = { min = 0, max = 1500 }  # Altitude in meters
+latitude = [10, 20]                        # Latitude between 10° and 20°
+day_temperature = { min = 20, max = 40 }   # Daytime temperatures in degrees Celsius
+night_temperature = { min = 10, max = 25 } # Nighttime temperatures in degrees Celsius
+precipitation = 750                        # Annual precipitation in mm (seasonal rains)
+altitude = { min = 0, max = 1500 }         # Altitude in meters
 
-[fauna]                              # Section for animals
-species = ["lion", "elephant", "zebra", "giraffe"]  # Animals commonly found in the savanna
+[fauna] # Section for animals
+species = [
+    "lion",
+    "elephant",
+    "zebra",
+    "giraffe",
+] # Animals commonly found in the savanna
 
-[flora]                              # Section for plants
-species = ["acacia_tree", "baobab", "tall_grass", "shrubs"]  # Plants commonly found in the savanna
+[flora] # Section for plants
+species = [
+    "acacia_tree",
+    "baobab",
+    "tall_grass",
+    "shrubs",
+] # Plants commonly found in the savanna
 
 [tiles]
-savanna_grass = [234, 183, 66]
-savanna_dry_dirt = [169, 79, 0] # cracked dry savanna soil
-savanna_moist_dirt =[93, 43, 0]
 savanna_water = [129, 161, 182]
+savanna_moist_dirt = [93, 43, 0]
+savanna_grass = [234, 183, 66]
+savanna_dry_dirt = [169, 79, 0]  # cracked dry savanna soil
 savanna_stone = [137, 121, 107]
