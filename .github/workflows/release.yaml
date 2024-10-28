@@ -50,13 +50,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - platform: linux
-            targets: x86_64-unknown-linux-gnu
-            profile: release-native
-            features: bevy/wayland
-            package_ext: .zip
-            runner: ubuntu-latest
-
           - platform: windows
             targets: x86_64-pc-windows-msvc
             profile: release-native
@@ -113,17 +106,6 @@ jobs:
       - name: Add assets to package (non-Web)
         if: ${{ matrix.platform != 'web' }}
         run: cp -r '${{ env.ASSETS_DIR }}' '${{ env.OUT_DIR }}' || true # Ignore error if assets folder does not exist
-
-      - name: Finish package (non-Windows)
-        if: ${{ matrix.platform != 'windows' }}
-        working-directory: tmp/package
-        run: |
-          if [ '${{ matrix.platform }}' == 'macos' ]; then
-            ln -s /Applications .
-            hdiutil create -fs HFS+ -volname '${{ env.PACKAGE_NAME }}' -srcfolder . '${{ env.PACKAGE }}${{ matrix.package_ext }}'
-          else
-            zip --recurse-paths '${{ env.PACKAGE }}${{ matrix.package_ext }}' '${{ env.PACKAGE_NAME }}'
-          fi
 
       - name: Finish package (Windows)
         if: ${{ matrix.platform == 'windows' }}
