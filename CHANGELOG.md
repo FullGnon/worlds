@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cargo.lock is now versionned
+
+### Fixed
+
+- Release workflow (profile release-native was missing)
+
 ## [0.1.1] - 2024-10-28
 
 ### Added
