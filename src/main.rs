@@ -138,9 +138,9 @@ impl Default for Configuration {
             tile_size: Vec2::new(16., 16.),
             elevation_gen: PerlinConfiguration {
                 seed: random(),
-                noise_scale: 20.,
-                octaves: 3,
-                lacunarity: 2.,
+                noise_scale: 100.,
+                octaves: 4,
+                lacunarity: 2.5,
                 persistance: 0.5,
                 offset: Vec2::new(
                     rng.gen_range(-100000..100000) as f32,
@@ -158,7 +158,7 @@ impl Default for Configuration {
                     rng.gen_range(-100000..100000) as f32,
                 ),
             },
-            sea_level: 1.,
+            sea_level: 0.05,
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
         }
     }
