@@ -10,6 +10,7 @@ use bevy::input::mouse::MouseWheel;
 use bevy::reflect::Reflect;
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::texture::{CompressedImageFormats, TextureError};
+use bevy::window::{PresentMode, WindowTheme};
 use bevy::{
     ecs::{query, reflect},
     math::uvec2,
@@ -34,16 +35,26 @@ use tempfile::{tempfile, Builder};
 
 fn main() {
     App::new()
-        .add_plugins((
-            DefaultPlugins,
-            PanCamPlugin,
-            EguiPlugin,
-            FastTileMapPlugin::default(),
-        ))
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Worlds".into(),
+                name: Some("worlds".into()),
+                resolution: (1600., 1000.).into(),
+                present_mode: PresentMode::AutoVsync,
+                window_theme: Some(WindowTheme::Dark),
+                enabled_buttons: bevy::window::EnabledButtons {
+                    maximize: false,
+                    ..Default::default()
+                },
+                ..default()
+            }),
+            ..default()
+        }))
+        .add_plugins((PanCamPlugin, EguiPlugin, FastTileMapPlugin::default()))
         .add_plugins(DefaultInspectorConfigPlugin)
         .init_resource::<Configuration>()
         .register_type::<Configuration>()
-        .add_plugins(ResourceInspectorPlugin::<Configuration>::default())
+        .add_plugins(ResourceInspectorPlugin::<Configuration>::new())
         .init_resource::<TextureTileSet>()
         .add_systems(Startup, setup)
         .add_systems(Update, update_map)
@@ -103,6 +114,7 @@ struct Configuration {
 
     elevation_gen: PerlinConfiguration,
     biome_gen: PerlinConfiguration,
+    sea_level: f64,
 
     biomes: HashMap<String, Biome>,
 }
@@ -146,6 +158,7 @@ impl Default for Configuration {
                     rng.gen_range(-100000..100000) as f32,
                 ),
             },
+            sea_level: 1.,
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
         }
     }
@@ -215,7 +228,8 @@ fn on_draw_map(
                     biome_value += perlin_value * amplitude;
                 }
 
-                let tile_index = select_tile_index(&texture_tileset, elevation_value, biome_value);
+                let tile_index =
+                    select_tile_index(&texture_tileset, &config, elevation_value, biome_value);
 
                 m.set(x, y, tile_index as u32);
             }
@@ -225,19 +239,27 @@ fn on_draw_map(
 
 fn select_tile_index(
     texture_tileset: &TextureTileSet,
+    config: &Configuration,
     elevation_value: f64,
     biome_value: f64,
 ) -> usize {
-    let biome_index = scale_to_index(
-        biome_value,
-        -1_f64,
-        1_f64,
-        0_f64,
-        texture_tileset.biomes_mapping.len() as f64 - 1.,
-    )
-    .clamp(0, texture_tileset.biomes_mapping.len() - 1);
-    let (min_index, n_tiles) = texture_tileset.biomes_mapping[biome_index].into();
+    // Select biome
+    let biome_index = if elevation_value <= config.sea_level {
+        texture_tileset.biomes_mapping["Ocean"]
+    } else {
+        /*scale_to_index(
+            biome_value,
+            -1_f64,
+            1_f64,
+            0_f64,
+            texture_tileset.biomes_position.len() as f64 - 1.,
+        )
+        .clamp(0, texture_tileset.biomes_position.len() - 1)*/
+        texture_tileset.biomes_mapping["savanna"]
+    };
+    let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
 
+    // Select biome tile
     scale_to_index(
         elevation_value,
         -1.,
@@ -259,7 +281,8 @@ struct TextureTile {
 struct TextureTileSet {
     path: PathBuf,
     tileset: Vec<TextureTile>,
-    biomes_mapping: Vec<[usize; 2]>,
+    biomes_position: Vec<[usize; 2]>,
+    biomes_mapping: HashMap<String, usize>,
 }
 
 impl FromWorld for TextureTileSet {
@@ -278,16 +301,18 @@ fn setup(
     mut materials: ResMut<Assets<Map>>,
     maps: Query<&Handle<Map>>,
 ) {
+    let camera_transform = Transform {
+        scale: Vec3::splat(6.0),
+        translation: Vec3::new(-1200., 0., 0.),
+        ..default()
+    };
+    println!("{:?}", camera_transform);
     commands
         .spawn(Camera2dBundle {
-            /*transform: Transform::from_xyz(
-                (config.width as f32 * config.tile_size.x) / 2.,
-                (config.height as f32 * config.tile_size.y) / 2.,
-                0.0,
-            ),*/
+            transform: camera_transform,
             ..default()
         })
-        .insert(PanCam::default());
+        .insert(PanCam { ..default() });
 
     let tiles_texture = asset_server.load(texture_tileset.path.clone());
 
@@ -319,9 +344,10 @@ fn build_tiles_texture_from_biomes(
     let mut img_buffer = RgbImage::new(width, tile_size);
 
     let mut idx_tile: usize = 0;
-    let mut biomes_mapping = Vec::new();
+    let mut biomes_position = Vec::new();
     let mut tileset: Vec<TextureTile> = Vec::new();
     let mut biome_current_index = 0_usize;
+    let mut biomes_mapping: HashMap<String, usize> = HashMap::new();
     for (biome_name, biome) in biomes.iter() {
         if biome.tiles.is_none() {
             continue;
@@ -341,7 +367,8 @@ fn build_tiles_texture_from_biomes(
             });
             idx_tile += 1;
         }
-        biomes_mapping.push([biome_current_index, idx_tile - biome_current_index]);
+        biomes_position.push([biome_current_index, idx_tile - biome_current_index]);
+        biomes_mapping.insert(biome_name.clone(), biomes_position.len() - 1);
         biome_current_index = idx_tile;
     }
 
@@ -359,6 +386,7 @@ fn build_tiles_texture_from_biomes(
     Ok(TextureTileSet {
         path,
         tileset,
+        biomes_position,
         biomes_mapping,
     })
 }

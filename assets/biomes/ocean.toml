@@ -1,0 +1,4 @@
+name = "Ocean"
+
+[tiles]
+water = [0, 0, 255]
