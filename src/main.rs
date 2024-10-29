@@ -38,6 +38,7 @@ const MAX_PERLIN_SCALE: f64 = 10000.;
 
 fn main() {
     App::new()
+        .init_resource::<DayTimer>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Worlds".into(),
@@ -55,15 +56,19 @@ fn main() {
         }))
         .add_plugins((PanCamPlugin, EguiPlugin, FastTileMapPlugin::default()))
         .add_plugins(DefaultInspectorConfigPlugin)
+        .register_type::<HashMap<String, Biome>>()
         .init_resource::<Configuration>()
         .register_type::<Configuration>()
         .add_plugins(ResourceInspectorPlugin::<Configuration>::new())
         .init_resource::<TextureTileSet>()
         .add_systems(Startup, setup)
-        .add_systems(Update, update_map)
+        .add_systems(Update, (tick_day_timer, update_map))
         .add_systems(
             PreUpdate,
-            absorb_egui_inputs.after(bevy_egui::systems::process_input_system),
+            (
+                asteroids_fly,
+                absorb_egui_inputs.after(bevy_egui::systems::process_input_system),
+            ),
         )
         .observe(on_draw_map)
         .run();
@@ -115,17 +120,27 @@ struct Configuration {
     width: u32,
     tile_size: Vec2,
 
+    mode: MapMode,
+
     elevation_gen: PerlinConfiguration,
-    biome_gen: PerlinConfiguration,
+    temperature_gen: TemperatureGeneration,
     sea_level: f64,
 
+    #[reflect(ignore)]
     biomes: HashMap<String, Biome>,
-    mode: MapMode,
 }
 
 #[derive(Reflect)]
 enum MapMode {
     Elevation,
+    Temperature,
+}
+
+#[derive(Reflect)]
+struct TemperatureGeneration {
+    perlin: PerlinConfiguration,
+    scale_lat_factor: f64,
+    noise_factor: f64,
 }
 
 #[derive(Reflect)]
@@ -156,20 +171,24 @@ impl Default for Configuration {
                     rng.gen_range(-100000..100000) as f32,
                 ),
             },
-            biome_gen: PerlinConfiguration {
-                seed: random(),
-                noise_scale: 100.,
-                octaves: 3,
-                lacunarity: 2.7,
-                persistance: 0.3,
-                offset: Vec2::new(
-                    rng.gen_range(-100000..100000) as f32,
-                    rng.gen_range(-100000..100000) as f32,
-                ),
+            temperature_gen: TemperatureGeneration {
+                perlin: PerlinConfiguration {
+                    seed: random(),
+                    noise_scale: 200.,
+                    octaves: 3,
+                    lacunarity: 4.,
+                    persistance: 0.3,
+                    offset: Vec2::new(
+                        rng.gen_range(-100000..100000) as f32,
+                        rng.gen_range(-100000..100000) as f32,
+                    ),
+                },
+                scale_lat_factor: 40.,
+                noise_factor: 20.,
             },
             sea_level: 0.05,
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
-            mode: MapMode::Elevation,
+            mode: MapMode::Temperature,
         }
     }
 }
@@ -199,12 +218,94 @@ fn on_draw_map(
             for y in 0..m.size().y {
                 let tile_index = match config.mode {
                     MapMode::Elevation => get_elevation_tile_index(x, y, &config, &texture_tileset),
+                    MapMode::Temperature => {
+                        get_temperature_tile_index(x, y, &config, &texture_tileset)
+                    }
                 };
 
                 m.set(x, y, tile_index as u32);
             }
         }
     }
+}
+
+fn xy_to_lonlat(config: &Configuration, x: u32, y: u32) -> (f64, f64) {
+    let x_min = 0_f64;
+    let y_min = 0_f64;
+    let x_max = (config.width - 1) as f64;
+    let y_max = (config.height - 1) as f64;
+
+    let lon = scale(x as f64, x_min, x_max, -180., 180.);
+    let lat = scale(y as f64, y_min, y_max, -90., 90.);
+
+    (lon, lat)
+}
+
+fn lonlat_to_xy(config: &Configuration, lon: f64, lat: f64) -> (u32, u32) {
+    let x_min = 0_f64;
+    let y_min = 0_f64;
+    let x_max = (config.width - 1) as f64;
+    let y_max = (config.height - 1) as f64;
+    let x = scale(lon, -180., 180., x_min, x_max);
+    let y = scale(lat, -90., 90., y_min, y_max);
+
+    (x as u32, y as u32)
+}
+
+fn get_temperature_tile_index(
+    x: u32,
+    y: u32,
+    config: &Configuration,
+    texture_tileset: &TextureTileSet,
+) -> usize {
+    let mut value = 0.;
+    let mut value_min = -1.;
+    let mut value_max = 1.;
+
+    let (lon, lat) = xy_to_lonlat(config, x, y);
+
+    let biome_index = texture_tileset.biomes_mapping["Temperature"];
+    let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
+
+    let scale = config
+        .temperature_gen
+        .perlin
+        .noise_scale
+        .clamp(0., MAX_PERLIN_SCALE);
+    let perlin = Perlin::new(config.temperature_gen.perlin.seed);
+    for o in 0..config.temperature_gen.perlin.octaves {
+        let offset_x: f64 = config.temperature_gen.perlin.offset.x as f64;
+        let offset_y: f64 = config.temperature_gen.perlin.offset.y as f64;
+        let frequency: f64 = config.temperature_gen.perlin.lacunarity.powi(o);
+        let amplitude: f64 = config.temperature_gen.perlin.persistance.powi(o);
+        let sample_x = x as f64 / scale * frequency + offset_x;
+        let sample_y = y as f64 / scale * frequency + offset_y;
+
+        let perlin_value = perlin.get([sample_x, sample_y, 0.0]);
+        value += perlin_value * amplitude;
+    }
+
+    let min_lat_factor = (-90_f64.to_radians().cos() * config.temperature_gen.scale_lat_factor);
+    let lat_factor = (lat.to_radians().cos() * config.temperature_gen.scale_lat_factor);
+    let max_lat_factor = (0_f64.to_radians().cos() * config.temperature_gen.scale_lat_factor);
+
+    let min_noise_factor = (-1. + 1.) * config.temperature_gen.noise_factor;
+    let noise_factor = (value + 1.) * config.temperature_gen.noise_factor;
+    let max_noise_factor = (1. + 1.) * config.temperature_gen.noise_factor;
+
+    let min_temperature = min_lat_factor + min_noise_factor - 10.;
+    let temperature = lat_factor + noise_factor - 10.;
+    let max_temperature = max_lat_factor + max_noise_factor - 10.;
+
+    // Select biome tile
+    scale_to_index(
+        temperature,
+        min_temperature,
+        max_temperature,
+        min_index as f64,
+        (min_index + n_tiles) as f64 - 1.,
+    )
+    .clamp(min_index, min_index + n_tiles - 1)
 }
 
 fn get_elevation_tile_index(
@@ -229,31 +330,16 @@ fn get_elevation_tile_index(
         value += perlin_value * amplitude;
     }
 
-    select_tile_index(texture_tileset, config, value)
-}
-
-fn select_tile_index(
-    texture_tileset: &TextureTileSet,
-    config: &Configuration,
-    elevation_value: f64,
-) -> usize {
     let mut value_min = -1.;
     let mut value_max = 1.;
-    let mut biome_index = 0;
 
     // Select biome
-    if elevation_value < config.sea_level {
-        biome_index = texture_tileset.biomes_mapping["Ocean"];
-        value_max = config.sea_level;
-    } else {
-        biome_index = texture_tileset.biomes_mapping["Land"];
-        value_min = config.sea_level;
-    };
+    let biome_index = texture_tileset.biomes_mapping["Elevation"];
     let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
 
     // Select biome tile
     scale_to_index(
-        elevation_value,
+        value,
         value_min,
         value_max,
         min_index as f64,
@@ -350,7 +436,11 @@ fn build_tiles_texture_from_biomes(
         if biome.tiles.is_none() {
             continue;
         }
-        let biome_tiles = biome.tiles.clone().unwrap();
+
+        let biome_tiles_clone = biome.tiles.clone().unwrap();
+        let mut biome_tiles: Vec<(&String, &[u8; 3])> = biome_tiles_clone.iter().collect();
+        biome_tiles.sort();
+
         for (tile_name, &tile_color) in biome_tiles.iter() {
             for x in 0..tile_size {
                 for y in 0..tile_size {
@@ -360,7 +450,7 @@ fn build_tiles_texture_from_biomes(
             let tiletexture = TextureTile {
                 index: idx_tile,
                 biome_name: biome_name.clone(),
-                tile_name: tile_name.clone(),
+                tile_name: tile_name.to_string(),
             };
             tileset.push(tiletexture);
             idx_tile += 1;
@@ -396,5 +486,28 @@ fn update_map(
 ) {
     if config.is_changed() {
         commands.trigger(DrawMapEvent);
+    }
+}
+
+#[derive(Resource)]
+struct DayTimer {
+    timer: Timer,
+}
+
+impl Default for DayTimer {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(0.1, TimerMode::Repeating),
+        }
+    }
+}
+
+fn tick_day_timer(mut day_timer: ResMut<DayTimer>, time: Res<Time>) {
+    day_timer.timer.tick(time.delta());
+}
+
+fn asteroids_fly(day_timer: Res<DayTimer>, mut config: ResMut<Configuration>) {
+    if day_timer.timer.finished() {
+        config.temperature_gen.perlin.offset.x += 0.05;
     }
 }
