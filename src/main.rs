@@ -34,6 +34,8 @@ mod biomes;
 use biomes::{load_biomes, Biome};
 use tempfile::{tempfile, Builder};
 
+const MAX_PERLIN_SCALE: f64 = 10000.;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -118,6 +120,12 @@ struct Configuration {
     sea_level: f64,
 
     biomes: HashMap<String, Biome>,
+    mode: MapMode,
+}
+
+#[derive(Reflect)]
+enum MapMode {
+    Elevation,
 }
 
 #[derive(Reflect)]
@@ -161,6 +169,7 @@ impl Default for Configuration {
             },
             sea_level: 0.05,
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
+            mode: MapMode::Elevation,
         }
     }
 }
@@ -184,53 +193,13 @@ fn on_draw_map(
         let map = materials.get_mut(map_handle).unwrap();
         let mut m = map.indexer_mut();
 
-        let perlin_elevation = Perlin::new(config.elevation_gen.seed);
-        let perlin_biome = Perlin::new(config.biome_gen.seed);
-
         // x0..xN => W - E
         // y0..yN => S - N
         for x in 0..m.size().x {
             for y in 0..m.size().y {
-                let mut elevation_value = 0.;
-                let elevation_scale = if config.elevation_gen.noise_scale <= 0.0 {
-                    0.0
-                } else {
-                    config.elevation_gen.noise_scale
+                let tile_index = match config.mode {
+                    MapMode::Elevation => get_elevation_tile_index(x, y, &config, &texture_tileset),
                 };
-
-                for o in 0..config.elevation_gen.octaves {
-                    let offset_x: f64 = config.elevation_gen.offset.x as f64;
-                    let offset_y: f64 = config.elevation_gen.offset.y as f64;
-                    let frequency: f64 = config.elevation_gen.lacunarity.powi(o);
-                    let amplitude: f64 = config.elevation_gen.persistance.powi(o);
-                    let sample_x = x as f64 / elevation_scale * frequency + offset_x;
-                    let sample_y = y as f64 / elevation_scale * frequency + offset_y;
-
-                    let perlin_value = perlin_elevation.get([sample_x, sample_y, 0.0]);
-                    elevation_value += perlin_value * amplitude;
-                }
-
-                let biome_scale = if config.biome_gen.noise_scale <= 0.0 {
-                    0.0
-                } else {
-                    config.biome_gen.noise_scale
-                };
-                let mut biome_value = 0.;
-                let perlin = Perlin::new(config.biome_gen.seed);
-                for o in 0..config.biome_gen.octaves {
-                    let offset_x: f64 = config.biome_gen.offset.x as f64;
-                    let offset_y: f64 = config.biome_gen.offset.y as f64;
-                    let frequency: f64 = config.biome_gen.lacunarity.powi(o);
-                    let amplitude: f64 = config.biome_gen.persistance.powi(o);
-                    let sample_x = x as f64 / biome_scale * frequency + offset_x;
-                    let sample_y = y as f64 / biome_scale * frequency + offset_y;
-
-                    let perlin_value = perlin_biome.get([sample_x, sample_y, 0.0]);
-                    biome_value += perlin_value * amplitude;
-                }
-
-                let tile_index =
-                    select_tile_index(&texture_tileset, &config, elevation_value, biome_value);
 
                 m.set(x, y, tile_index as u32);
             }
@@ -238,11 +207,35 @@ fn on_draw_map(
     }
 }
 
+fn get_elevation_tile_index(
+    x: u32,
+    y: u32,
+    config: &Configuration,
+    texture_tileset: &TextureTileSet,
+) -> usize {
+    let mut value = 0.;
+    let scale = config.elevation_gen.noise_scale.clamp(0., MAX_PERLIN_SCALE);
+    let perlin = Perlin::new(config.elevation_gen.seed);
+
+    for o in 0..config.elevation_gen.octaves {
+        let offset_x: f64 = config.elevation_gen.offset.x as f64;
+        let offset_y: f64 = config.elevation_gen.offset.y as f64;
+        let frequency: f64 = config.elevation_gen.lacunarity.powi(o);
+        let amplitude: f64 = config.elevation_gen.persistance.powi(o);
+        let sample_x = x as f64 / scale * frequency + offset_x;
+        let sample_y = y as f64 / scale * frequency + offset_y;
+
+        let perlin_value = perlin.get([sample_x, sample_y, 0.0]);
+        value += perlin_value * amplitude;
+    }
+
+    select_tile_index(texture_tileset, config, value)
+}
+
 fn select_tile_index(
     texture_tileset: &TextureTileSet,
     config: &Configuration,
     elevation_value: f64,
-    biome_value: f64,
 ) -> usize {
     let mut value_min = -1.;
     let mut value_max = 1.;

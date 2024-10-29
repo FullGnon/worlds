@@ -16,7 +16,7 @@ pub(crate) struct Biome {
     //conditions: Option<HashMap<String, HashMap<String, usize>>>,
     //fauna: Option<HashMap<String, Vec<String>>>,
     //flora: Option<HashMap<String, Vec<String>>>,
-    pub tiles: Option<HashMap<String, [u8; 3]>>,
+    pub tiles: Option<IndexMap<String, [u8; 3]>>,
 }
 
 #[derive(Debug)]
