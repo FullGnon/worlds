@@ -117,7 +117,8 @@ struct Configuration {
     tile_size: Vec2,
 
     mode: MapMode,
-    worldshape: WorldShapeGeneration,
+    world_shape: WorldShapeGeneration,
+    shaped_world: bool,
 
     elevation_gen: PerlinConfiguration,
     temperature_gen: TemperatureGeneration,
@@ -141,35 +142,50 @@ struct TemperatureGeneration {
     noise_factor: f64,
 }
 
-#[derive(Reflect)]
-enum WorldShape {
-    Circle,
+#[reflect_trait]
+trait ShapeGenerator {
+    fn generate(&self, x: u32, y: u32, config: &Configuration) -> f64;
 }
 
-impl WorldShape {
-    fn apply_shape(x: u32, y: u32, config: &Configuration) -> f64 {
+#[derive(Reflect, Default)]
+struct CircleCenteredShape;
+
+impl ShapeGenerator for CircleCenteredShape {
+    fn generate(&self, x: u32, y: u32, config: &Configuration) -> f64 {
         let center_x = config.width as f64 / 2.;
         let center_y = config.height as f64 / 2.;
 
         let distance = ((x as f64 - center_x).powi(2) + (y as f64 - center_y).powi(2)).sqrt();
         let distance_max = (center_x.powi(2) + center_y.powi(2)).sqrt();
-        let radius = 20.;
 
-        scale(distance, 0., distance_max, 0., 1.)
+        scale(distance, 0., distance_max, -1., 1.)
+    }
+}
+
+#[derive(Reflect)]
+enum WorldShape {
+    CenteredShape(CircleCenteredShape),
+}
+
+impl WorldShape {
+    fn generate(&self, x: u32, y: u32, config: &Configuration) -> f64 {
+        match self {
+            WorldShape::CenteredShape(generator) => generator.generate(x, y, config),
+        }
     }
 }
 
 #[derive(Reflect)]
 struct WorldShapeGeneration {
     shape: WorldShape,
-    jitter: f64,
+    shape_factor: f64,
 }
 
 impl Default for WorldShapeGeneration {
     fn default() -> Self {
         Self {
-            shape: WorldShape::Circle,
-            jitter: 0.5,
+            shape: WorldShape::CenteredShape(CircleCenteredShape),
+            shape_factor: 1.1,
         }
     }
 }
@@ -219,8 +235,9 @@ impl Default for Configuration {
             },
             sea_level: 0.05,
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
-            mode: MapMode::Temperature,
-            worldshape: WorldShapeGeneration::default(),
+            mode: MapMode::Elevation,
+            world_shape: WorldShapeGeneration::default(),
+            shaped_world: true,
         }
     }
 }
@@ -270,26 +287,19 @@ fn get_world_shape_tile_index(
     config: &Configuration,
     texture_tileset: &TextureTileSet,
 ) -> usize {
-    let mut value = 0.;
     let biome_index = texture_tileset.biomes_mapping["Grayscale"];
     let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
 
-    value = WorldShape::apply_shape(x, y, config);
+    let value = config.world_shape.shape.generate(x, y, config);
 
-    if distance > radius {
-        min_index
-    } else {
-        min_index + 1
-    }
-
-    /*scale_to_index(
+    scale_to_index(
         value,
-        -1.,
+        0.,
         1.,
         min_index as f64,
         (min_index + n_tiles) as f64 - 1.,
     )
-    .clamp(min_index, min_index + n_tiles - 1)*/
+    .clamp(min_index, min_index + n_tiles - 1)
 }
 
 fn xy_to_lonlat(config: &Configuration, x: u32, y: u32) -> (f64, f64) {
@@ -400,9 +410,12 @@ fn get_elevation_tile_index(
     let biome_index = texture_tileset.biomes_mapping["Elevation"];
     let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
 
+    let shape_value = config.world_shape.shape.generate(x, y, config);
+    value -= shape_value * config.world_shape.shape_factor;
+
     // Select biome tile
     scale_to_index(
-        value,
+        value.clamp(value_min, value_max),
         value_min,
         value_max,
         min_index as f64,
