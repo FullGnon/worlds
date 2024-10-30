@@ -64,9 +64,7 @@ fn main() {
         .add_systems(Update, (update_map))
         .add_systems(
             PreUpdate,
-            (
-                absorb_egui_inputs.after(bevy_egui::systems::process_input_system),
-            ),
+            (absorb_egui_inputs.after(bevy_egui::systems::process_input_system),),
         )
         .observe(on_draw_map)
         .run();
@@ -119,6 +117,7 @@ struct Configuration {
     tile_size: Vec2,
 
     mode: MapMode,
+    worldshape: WorldShapeGeneration,
 
     elevation_gen: PerlinConfiguration,
     temperature_gen: TemperatureGeneration,
@@ -132,6 +131,7 @@ struct Configuration {
 enum MapMode {
     Elevation,
     Temperature,
+    WorldShapeMode,
 }
 
 #[derive(Reflect)]
@@ -139,6 +139,39 @@ struct TemperatureGeneration {
     perlin: PerlinConfiguration,
     scale_lat_factor: f64,
     noise_factor: f64,
+}
+
+#[derive(Reflect)]
+enum WorldShape {
+    Circle,
+}
+
+impl WorldShape {
+    fn apply_shape(x: u32, y: u32, config: &Configuration) -> f64 {
+        let center_x = config.width as f64 / 2.;
+        let center_y = config.height as f64 / 2.;
+
+        let distance = ((x as f64 - center_x).powi(2) + (y as f64 - center_y).powi(2)).sqrt();
+        let distance_max = (center_x.powi(2) + center_y.powi(2)).sqrt();
+        let radius = 20.;
+
+        scale(distance, 0., distance_max, 0., 1.)
+    }
+}
+
+#[derive(Reflect)]
+struct WorldShapeGeneration {
+    shape: WorldShape,
+    jitter: f64,
+}
+
+impl Default for WorldShapeGeneration {
+    fn default() -> Self {
+        Self {
+            shape: WorldShape::Circle,
+            jitter: 0.5,
+        }
+    }
 }
 
 #[derive(Reflect)]
@@ -187,6 +220,7 @@ impl Default for Configuration {
             sea_level: 0.05,
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
             mode: MapMode::Temperature,
+            worldshape: WorldShapeGeneration::default(),
         }
     }
 }
@@ -219,12 +253,43 @@ fn on_draw_map(
                     MapMode::Temperature => {
                         get_temperature_tile_index(x, y, &config, &texture_tileset)
                     }
+                    MapMode::WorldShapeMode => {
+                        get_world_shape_tile_index(x, y, &config, &texture_tileset)
+                    }
                 };
 
                 m.set(x, y, tile_index as u32);
             }
         }
     }
+}
+
+fn get_world_shape_tile_index(
+    x: u32,
+    y: u32,
+    config: &Configuration,
+    texture_tileset: &TextureTileSet,
+) -> usize {
+    let mut value = 0.;
+    let biome_index = texture_tileset.biomes_mapping["Grayscale"];
+    let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
+
+    value = WorldShape::apply_shape(x, y, config);
+
+    if distance > radius {
+        min_index
+    } else {
+        min_index + 1
+    }
+
+    /*scale_to_index(
+        value,
+        -1.,
+        1.,
+        min_index as f64,
+        (min_index + n_tiles) as f64 - 1.,
+    )
+    .clamp(min_index, min_index + n_tiles - 1)*/
 }
 
 fn xy_to_lonlat(config: &Configuration, x: u32, y: u32) -> (f64, f64) {
@@ -283,7 +348,7 @@ fn get_temperature_tile_index(
         value += perlin_value * amplitude;
     }
 
-    let min_lat_factor = (-90_f64.to_radians().cos() * config.temperature_gen.scale_lat_factor);
+    let min_lat_factor = (-(90_f64.to_radians().cos()) * config.temperature_gen.scale_lat_factor);
     let lat_factor = (lat.to_radians().cos() * config.temperature_gen.scale_lat_factor);
     let max_lat_factor = (0_f64.to_radians().cos() * config.temperature_gen.scale_lat_factor);
 

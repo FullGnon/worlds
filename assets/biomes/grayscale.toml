@@ -1,0 +1,7 @@
+name = "Grayscale"
+enabled = true
+
+[tiles]
+l0 = [0,0,0]
+l1 = [175, 175, 175]
+l2 = [255,255,255]
