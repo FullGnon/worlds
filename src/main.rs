@@ -38,7 +38,6 @@ const MAX_PERLIN_SCALE: f64 = 10000.;
 
 fn main() {
     App::new()
-        .init_resource::<DayTimer>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Worlds".into(),
@@ -62,11 +61,10 @@ fn main() {
         .add_plugins(ResourceInspectorPlugin::<Configuration>::new())
         .init_resource::<TextureTileSet>()
         .add_systems(Startup, setup)
-        .add_systems(Update, (tick_day_timer, update_map))
+        .add_systems(Update, (update_map))
         .add_systems(
             PreUpdate,
             (
-                asteroids_fly,
                 absorb_egui_inputs.after(bevy_egui::systems::process_input_system),
             ),
         )
