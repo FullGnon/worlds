@@ -142,11 +142,13 @@ mod tests {
                 BiomeTestCase::NameOnly => {
                     r#"
                     name = "NameOnly"
+                    enabled = true
                 "#
                 }
                 BiomeTestCase::WithEmptyTiles => {
                     r#"
                     name = "WithEmptyTiles"
+                    enabled = true
 
                     [tiles]
                     "#
@@ -154,6 +156,7 @@ mod tests {
                 BiomeTestCase::WithSomeTiles => {
                     r#"
                     name = "WithSomeTiles"
+                    enabled = true
 
                     [tiles]
                     grass = [1, 1, 1]
@@ -170,6 +173,7 @@ mod tests {
                 BiomeTestCase::WithTilesError => {
                     r#"
                     name = "WithTilesError"
+                    enabled = true
 
                     [tiles]
                     grass = 0
