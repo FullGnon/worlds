@@ -367,7 +367,7 @@ fn get_world_shape_tile_index(
     y: u32,
     config: &Configuration,
     texture_tileset: &TextureTileSet,
-    shape_generator: &Box<dyn ShapeGenerator>,
+    #[allow(clippy::borrowed_box)] shape_generator: &Box<dyn ShapeGenerator>,
 ) -> usize {
     let biome_index = texture_tileset.biomes_mapping["Elevation"];
     let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
@@ -468,7 +468,7 @@ fn get_elevation_tile_index(
     y: u32,
     config: &Configuration,
     texture_tileset: &TextureTileSet,
-    shape_generator: &Box<dyn ShapeGenerator>,
+    #[allow(clippy::borrowed_box)] shape_generator: &Box<dyn ShapeGenerator>,
 ) -> usize {
     let mut value = 0.;
     let scale = config.elevation_gen.noise_scale.clamp(0., MAX_PERLIN_SCALE);
