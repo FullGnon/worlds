@@ -7,7 +7,9 @@ use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::{fs, thread::sleep, time::Duration};
 
+use bevy::app::DynEq;
 use bevy::input::mouse::MouseWheel;
+use bevy::log::tracing_subscriber::util::SubscriberInitExt;
 use bevy::reflect::Reflect;
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::texture::{CompressedImageFormats, TextureError};
@@ -57,6 +59,7 @@ fn main() {
         .add_plugins(DefaultInspectorConfigPlugin)
         .register_type::<HashMap<String, Biome>>()
         .init_resource::<Configuration>()
+        .init_resource::<ShapeGeneratorResource>()
         .register_type::<Configuration>()
         .add_plugins(ResourceInspectorPlugin::<Configuration>::new())
         .init_resource::<TextureTileSet>()
@@ -142,15 +145,30 @@ struct TemperatureGeneration {
     noise_factor: f64,
 }
 
-#[reflect_trait]
-trait ShapeGenerator {
+// This resource should be bound to a state ?
+#[derive(Resource)]
+struct ShapeGeneratorResource {
+    generator: Box<dyn ShapeGenerator>,
+}
+
+impl Default for ShapeGeneratorResource {
+    fn default() -> Self {
+        Self {
+            generator: Box::new(CircleCenteredShape),
+        }
+    }
+}
+
+trait ShapeGenerator: Send + Sync {
+    fn init(&mut self, config: &Configuration);
     fn generate(&self, x: u32, y: u32, config: &Configuration) -> f64;
 }
 
-#[derive(Reflect, Default)]
+#[derive(Default)]
 struct CircleCenteredShape;
 
 impl ShapeGenerator for CircleCenteredShape {
+    fn init(&mut self, config: &Configuration) {}
     fn generate(&self, x: u32, y: u32, config: &Configuration) -> f64 {
         let center_x = config.width as f64 / 2.;
         let center_y = config.height as f64 / 2.;
@@ -162,30 +180,82 @@ impl ShapeGenerator for CircleCenteredShape {
     }
 }
 
-#[derive(Reflect)]
-enum WorldShape {
-    CenteredShape(CircleCenteredShape),
+struct ContinentsShape {
+    count: usize,
+    random_points: Vec<(f64, f64)>,
+    seed: u32,
 }
 
-impl WorldShape {
-    fn generate(&self, x: u32, y: u32, config: &Configuration) -> f64 {
-        match self {
-            WorldShape::CenteredShape(generator) => generator.generate(x, y, config),
+impl Default for ContinentsShape {
+    fn default() -> Self {
+        Self {
+            count: 1,
+            random_points: Vec::new(),
+            seed: 0,
         }
     }
 }
 
+impl ShapeGenerator for ContinentsShape {
+    fn init(&mut self, config: &Configuration) {
+        let x_max = config.width as f64;
+        let y_max = config.height as f64;
+        let mut rng = rand::thread_rng();
+
+        self.count = config.world_shape.count_continent;
+        self.seed = config.elevation_gen.seed;
+        self.random_points.clear();
+
+        for i in 0..self.count {
+            let x = rng.gen_range(0_f64..=x_max);
+            let y = rng.gen_range(0_f64..=y_max);
+
+            self.random_points.push((x, y));
+        }
+
+        println!("RANDOM POINTS {:?}", self.random_points);
+        let distance_max = ((config.width.pow(2) + config.height.pow(2)) as f64).sqrt();
+        println!("DISTANCE MAX {}", distance_max);
+    }
+
+    fn generate(&self, x: u32, y: u32, config: &Configuration) -> f64 {
+        let distance_max = ((config.width.pow(2) + config.height.pow(2)) as f64).sqrt();
+        let mut distance = distance_max;
+
+        for i in 0..self.count {
+            let (point_x, point_y) = self.random_points[i];
+            let point_distance =
+                ((x as f64 - point_x).powi(2) + (y as f64 - point_y).powi(2)).sqrt();
+            if point_distance < distance {
+                distance = point_distance;
+            }
+        }
+
+        scale(distance, 0., config.world_shape.shape_radius, -1., 1.)
+    }
+}
+
+#[derive(Reflect)]
+enum WorldShapeEnum {
+    CenteredShape,
+    Continents,
+}
+
 #[derive(Reflect)]
 struct WorldShapeGeneration {
-    shape: WorldShape,
+    shape: WorldShapeEnum,
     shape_factor: f64,
+    shape_radius: f64,
+    count_continent: usize,
 }
 
 impl Default for WorldShapeGeneration {
     fn default() -> Self {
         Self {
-            shape: WorldShape::CenteredShape(CircleCenteredShape),
+            shape: WorldShapeEnum::Continents,
             shape_factor: 1.1,
+            shape_radius: 200.,
+            count_continent: 2,
         }
     }
 }
@@ -235,7 +305,7 @@ impl Default for Configuration {
             },
             sea_level: 0.05,
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
-            mode: MapMode::Elevation,
+            mode: MapMode::WorldShapeMode,
             world_shape: WorldShapeGeneration::default(),
             shaped_world: true,
         }
@@ -256,6 +326,7 @@ fn on_draw_map(
     mut materials: ResMut<Assets<Map>>,
     config: Res<Configuration>,
     maps: Query<&Handle<Map>>,
+    shape_generator: Res<ShapeGeneratorResource>,
 ) {
     for map_handle in maps.iter() {
         let map = materials.get_mut(map_handle).unwrap();
@@ -266,13 +337,23 @@ fn on_draw_map(
         for x in 0..m.size().x {
             for y in 0..m.size().y {
                 let tile_index = match config.mode {
-                    MapMode::Elevation => get_elevation_tile_index(x, y, &config, &texture_tileset),
+                    MapMode::Elevation => get_elevation_tile_index(
+                        x,
+                        y,
+                        &config,
+                        &texture_tileset,
+                        &shape_generator.generator,
+                    ),
                     MapMode::Temperature => {
                         get_temperature_tile_index(x, y, &config, &texture_tileset)
                     }
-                    MapMode::WorldShapeMode => {
-                        get_world_shape_tile_index(x, y, &config, &texture_tileset)
-                    }
+                    MapMode::WorldShapeMode => get_world_shape_tile_index(
+                        x,
+                        y,
+                        &config,
+                        &texture_tileset,
+                        &shape_generator.generator,
+                    ),
                 };
 
                 m.set(x, y, tile_index as u32);
@@ -286,11 +367,12 @@ fn get_world_shape_tile_index(
     y: u32,
     config: &Configuration,
     texture_tileset: &TextureTileSet,
+    shape_generator: &Box<dyn ShapeGenerator>,
 ) -> usize {
-    let biome_index = texture_tileset.biomes_mapping["Grayscale"];
+    let biome_index = texture_tileset.biomes_mapping["Elevation"];
     let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
 
-    let value = config.world_shape.shape.generate(x, y, config);
+    let value = shape_generator.generate(x, y, config);
 
     scale_to_index(
         value,
@@ -386,6 +468,7 @@ fn get_elevation_tile_index(
     y: u32,
     config: &Configuration,
     texture_tileset: &TextureTileSet,
+    shape_generator: &Box<dyn ShapeGenerator>,
 ) -> usize {
     let mut value = 0.;
     let scale = config.elevation_gen.noise_scale.clamp(0., MAX_PERLIN_SCALE);
@@ -410,8 +493,10 @@ fn get_elevation_tile_index(
     let biome_index = texture_tileset.biomes_mapping["Elevation"];
     let (min_index, n_tiles) = texture_tileset.biomes_position[biome_index].into();
 
-    let shape_value = config.world_shape.shape.generate(x, y, config);
-    value -= shape_value * config.world_shape.shape_factor;
+    if config.shaped_world {
+        let shape_value = shape_generator.generate(x, y, config);
+        value -= shape_value * config.world_shape.shape_factor;
+    }
 
     // Select biome tile
     scale_to_index(
@@ -461,6 +546,7 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<Map>>,
     maps: Query<&Handle<Map>>,
+    mut shape_generator_resource: ResMut<ShapeGeneratorResource>,
 ) {
     let camera_transform = Transform {
         scale: Vec3::splat(6.0),
@@ -490,6 +576,8 @@ fn setup(
         material: materials.add(map),
         ..default()
     });
+
+    shape_generator_resource.generator.init(&config);
 
     commands.trigger(DrawMapEvent);
 }
@@ -559,8 +647,18 @@ fn update_map(
     config: Res<Configuration>,
     mut materials: ResMut<Assets<Map>>,
     maps: Query<&Handle<Map>>,
+    mut shape_generator_resource: ResMut<ShapeGeneratorResource>,
 ) {
     if config.is_changed() {
+        match config.world_shape.shape {
+            WorldShapeEnum::CenteredShape => {
+                shape_generator_resource.generator = Box::new(CircleCenteredShape);
+            }
+            WorldShapeEnum::Continents => {
+                shape_generator_resource.generator = Box::new(ContinentsShape::default());
+            }
+        }
+        shape_generator_resource.generator.init(&config);
         commands.trigger(DrawMapEvent);
     }
 }
