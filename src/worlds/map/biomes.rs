@@ -6,8 +6,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use bevy::prelude::*;
 use bevy::reflect::Reflect;
 use serde::Deserialize;
+
+pub(super) fn plugin(app: &mut App) {}
 
 #[derive(Reflect, Deserialize, Debug, PartialEq, Clone)]
 pub(crate) struct Biome {
