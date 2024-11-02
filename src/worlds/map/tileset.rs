@@ -10,10 +10,6 @@ use std::path::PathBuf;
 use crate::worlds::map::biomes::Biome;
 use crate::worlds::settings::Settings;
 
-pub(super) fn plugin(app: &mut App) {
-    app.init_resource::<TextureTileSet>();
-}
-
 #[derive(Debug)]
 pub struct TextureTile {
     index: u32,
