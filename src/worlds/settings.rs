@@ -1,27 +1,36 @@
 use bevy::prelude::*;
+use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 use bevy_inspector_egui::InspectorOptions;
 use rand::{random, Rng};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::worlds::map::biomes::Biome;
+
+use super::map::biomes::load_biomes;
+
 pub(super) fn plugin(app: &mut App) {
-    app.init_resource::<Settings>().register_type::<Settings>();
+    app.init_resource::<Settings>()
+        .register_type::<Settings>()
+        .add_plugins(ResourceInspectorPlugin::<Settings>::new());
 }
 
 // TBD: Condition the use of InspectorOptions
 #[derive(Reflect, Resource, InspectorOptions)]
-struct Settings {
-    height: u32,
-    width: u32,
-    tile_size: Vec2,
+pub struct Settings {
+    pub height: u32,
+    pub width: u32,
+    pub tile_size: Vec2,
 
-    mode: MapMode,
-    world_shape: WorldShapeGeneration,
-    shaped_world: bool,
+    pub mode: MapMode,
+    pub world_shape: WorldShapeGeneration,
+    pub shaped_world: bool,
 
-    elevation_gen: PerlinConfiguration,
-    temperature_gen: TemperatureGeneration,
-    sea_level: f64,
+    pub elevation_gen: PerlinConfiguration,
+    pub temperature_gen: TemperatureGeneration,
+    pub sea_level: f64,
+
+    pub biomes: HashMap<String, Biome>,
 }
 
 impl Default for Settings {
@@ -68,31 +77,31 @@ impl Default for Settings {
 }
 
 #[derive(Reflect)]
-enum MapMode {
+pub enum MapMode {
     Elevation,
     Temperature,
     WorldShapeMode,
 }
 
 #[derive(Reflect)]
-struct TemperatureGeneration {
-    perlin: PerlinConfiguration,
-    scale_lat_factor: f64,
-    noise_factor: f64,
+pub struct TemperatureGeneration {
+    pub perlin: PerlinConfiguration,
+    pub scale_lat_factor: f64,
+    pub noise_factor: f64,
 }
 
 #[derive(Reflect)]
-enum WorldShapeEnum {
+pub enum WorldShapeEnum {
     CenteredShape,
     Continents,
 }
 
 #[derive(Reflect)]
-struct WorldShapeGeneration {
-    shape: WorldShapeEnum,
-    shape_factor: f64,
-    shape_radius: f64,
-    count_continent: usize,
+pub struct WorldShapeGeneration {
+    pub shape: WorldShapeEnum,
+    pub shape_factor: f64,
+    pub shape_radius: f64,
+    pub count_continent: usize,
 }
 
 impl Default for WorldShapeGeneration {
@@ -107,11 +116,11 @@ impl Default for WorldShapeGeneration {
 }
 
 #[derive(Reflect)]
-struct PerlinConfiguration {
-    seed: u32,
-    noise_scale: f64,
-    octaves: i32,
-    lacunarity: f64,
-    persistance: f64,
-    offset: Vec2,
+pub struct PerlinConfiguration {
+    pub seed: u32,
+    pub noise_scale: f64,
+    pub octaves: i32,
+    pub lacunarity: f64,
+    pub persistance: f64,
+    pub offset: Vec2,
 }
