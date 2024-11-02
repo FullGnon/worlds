@@ -16,7 +16,7 @@ pub(super) fn plugin(app: &mut App) {
 
 #[derive(Debug)]
 pub struct TextureTile {
-    index: usize,
+    index: u32,
     biome_name: String,
     tile_name: String,
 }
@@ -25,8 +25,8 @@ pub struct TextureTile {
 pub struct TextureTileSet {
     pub path: PathBuf,
     pub tileset: Vec<TextureTile>,
-    pub biomes_position: Vec<[usize; 2]>,
-    pub biomes_mapping: HashMap<String, usize>,
+    pub biomes_position: Vec<[u32; 2]>,
+    pub biomes_mapping: HashMap<String, u32>,
 }
 
 impl FromWorld for TextureTileSet {
@@ -53,11 +53,11 @@ fn build_tiles_texture_from_biomes(
     let width: u32 = n_tile * tile_size;
     let mut img_buffer = RgbImage::new(width, tile_size);
 
-    let mut idx_tile: usize = 0;
+    let mut idx_tile = 0_u32;
     let mut biomes_position = Vec::new();
     let mut tileset: Vec<TextureTile> = Vec::new();
-    let mut biome_current_index = 0_usize;
-    let mut biomes_mapping: HashMap<String, usize> = HashMap::new();
+    let mut biome_current_index = 0_u32;
+    let mut biomes_mapping: HashMap<String, u32> = HashMap::new();
     for (biome_name, biome) in biomes.iter() {
         if biome.tiles.is_none() {
             continue;
@@ -70,7 +70,7 @@ fn build_tiles_texture_from_biomes(
         for (tile_name, &tile_color) in biome_tiles.iter() {
             for x in 0..tile_size {
                 for y in 0..tile_size {
-                    img_buffer.put_pixel(x + (tile_size * idx_tile as u32), y, Rgb(tile_color));
+                    img_buffer.put_pixel(x + (tile_size * idx_tile), y, Rgb(tile_color));
                 }
             }
             let tiletexture = TextureTile {
@@ -82,7 +82,7 @@ fn build_tiles_texture_from_biomes(
             idx_tile += 1;
         }
         biomes_position.push([biome_current_index, idx_tile - biome_current_index]);
-        biomes_mapping.insert(biome_name.clone(), biomes_position.len() - 1);
+        biomes_mapping.insert(biome_name.clone(), (biomes_position.len() - 1) as u32);
         biome_current_index = idx_tile;
     }
 

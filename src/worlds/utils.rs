@@ -4,8 +4,8 @@ pub fn scale(value: f64, min: f64, max: f64, scale_min: f64, scale_max: f64) -> 
     ((value - min) / (max - min)) * (scale_max - scale_min) + scale_min
 }
 
-pub fn scale_to_index(value: f64, min: f64, max: f64, scale_min: f64, scale_max: f64) -> usize {
-    scale(value, min, max, scale_min, scale_max).round() as usize
+pub fn scale_to_index(value: f64, min: f64, max: f64, scale_min: f64, scale_max: f64) -> u32 {
+    scale(value, min, max, scale_min, scale_max).round() as u32
 }
 
 pub fn xy_to_lonlat(config: &Settings, x: u32, y: u32) -> (f64, f64) {
