@@ -7,9 +7,11 @@ use bevy_fast_tilemap::{bundle::MapBundleManaged, map::Map, plugin::FastTileMapP
 use biomes::Biome;
 use events::{DrawMapEvent, GenerateMapEvent};
 use generator::elevation::ElevationGenerator;
+use generator::temperature::TemperatureGenerator;
 use generator::MapGenerator;
 use noise::{NoiseFn, Perlin};
 use renderer::elevation::ElevationMapRenderer;
+use renderer::temperature::TemperatureMapRenderer;
 use renderer::MapRenderer;
 use shapes::{CircleCenteredShape, ContinentsShape, ShapeGenerator, ShapeGeneratorResource};
 use tile::{Tile, TileMatrixResource};
@@ -38,10 +40,8 @@ impl FromWorld for MapGeneratorsResource {
     fn from_world(world: &mut World) -> Self {
         let config = world.resource::<Settings>();
 
-        let mut generators: Vec<Box<dyn MapGenerator>> = Vec::new();
-
-        // TODO: to build from settings
-        generators.push(Box::new(ElevationGenerator));
+        let mut generators: Vec<Box<dyn MapGenerator>> =
+            vec![Box::new(ElevationGenerator), Box::new(TemperatureGenerator)];
 
         Self { generators }
     }
@@ -57,10 +57,13 @@ impl FromWorld for MapRendererResource {
         let config = world.resource::<Settings>();
         let texture_tileset = world.resource::<TextureTileSet>();
 
-        // TODO: to build from settings
-        Self {
-            renderer: Box::new(ElevationMapRenderer::new(texture_tileset)),
-        }
+        let renderer: Box<dyn MapRenderer> = match config.mode {
+            MapMode::Elevation => Box::new(ElevationMapRenderer::new(texture_tileset)),
+            MapMode::Temperature => Box::new(TemperatureMapRenderer::new(texture_tileset)),
+            MapMode::WorldShapeMode => Box::new(ElevationMapRenderer::new(texture_tileset)),
+        };
+
+        Self { renderer }
     }
 }
 
@@ -113,7 +116,6 @@ fn on_generate_map(
     config: Res<Settings>,
     mut generators: ResMut<MapGeneratorsResource>,
 ) {
-    println!("GENERATE MAP");
     for x in 0..config.width {
         for y in 0..config.height {
             let mut tile: Tile = Tile::default();
@@ -125,6 +127,8 @@ fn on_generate_map(
             tile_matrix.set(x as usize, y as usize, tile);
         }
     }
+
+    println!("{:?}", tile_matrix);
 
     commands.trigger(DrawMapEvent);
 }
@@ -139,13 +143,10 @@ fn on_draw_map(
     tile_matrix: Res<TileMatrixResource>,
     renderer: Res<MapRendererResource>,
 ) {
-    println!("RENDER MAP");
     for map_handle in maps.iter() {
         let map = materials.get_mut(map_handle).unwrap();
         let mut m = map.indexer_mut();
 
-        // x0..xN => W - E
-        // y0..yN => S - N
         for x in 0..tile_matrix.width {
             for y in 0..tile_matrix.height {
                 let tile = tile_matrix.get(x, y).unwrap();
@@ -163,8 +164,15 @@ fn update_map(
     mut materials: ResMut<Assets<Map>>,
     maps: Query<&Handle<Map>>,
     mut shape_generator_resource: ResMut<ShapeGeneratorResource>,
+    mut renderer: ResMut<MapRendererResource>,
+    texture_tileset: Res<TextureTileSet>,
 ) {
     if config.is_changed() {
+        renderer.renderer = match config.mode {
+            MapMode::Elevation => Box::new(ElevationMapRenderer::new(&texture_tileset)),
+            MapMode::Temperature => Box::new(TemperatureMapRenderer::new(&texture_tileset)),
+            MapMode::WorldShapeMode => Box::new(ElevationMapRenderer::new(&texture_tileset)),
+        };
         commands.trigger(GenerateMapEvent);
     }
 }

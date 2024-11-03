@@ -28,9 +28,6 @@ impl MapGenerator for ElevationGenerator {
             value += perlin_value * amplitude;
         }
 
-        let mut value_min = -1.;
-        let mut value_max = 1.;
-
         tile.elevation = value;
     }
 }

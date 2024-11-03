@@ -37,8 +37,8 @@ impl Default for Settings {
     fn default() -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            height: 400,
-            width: 400,
+            height: 100,
+            width: 100,
             tile_size: Vec2::new(16., 16.),
             elevation_gen: PerlinConfiguration {
                 seed: random(),
@@ -69,7 +69,7 @@ impl Default for Settings {
             sea_level: 0.05,
             // TBD: It could be better to load biomes as asset directly
             biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
-            mode: MapMode::WorldShapeMode,
+            mode: MapMode::Elevation,
             world_shape: WorldShapeGeneration::default(),
             shaped_world: true,
         }

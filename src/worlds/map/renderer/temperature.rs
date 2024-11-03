@@ -30,7 +30,7 @@ impl MapRenderer for TemperatureMapRenderer {
             -1.,
             1.,
             self.start as f64,
-            (self.start - self.size) as f64,
+            self.start as f64 - self.size as f64,
         )
     }
 }
