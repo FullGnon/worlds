@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Ideas]
+
+- clap CLI to validate configuration files (main settings, biomes)
+
 ## [Unrealeased]
+
+### Changed
+
+- Big refacto following Bevy recommandations for plugin architecture
+    - WorldsPlugin is composed by the camera, UI, settings and the map
+    - MapPlugin do everything else mainly generating, rendering the tilemap
 
 ## [0.1.4] - 2024-10-31
 

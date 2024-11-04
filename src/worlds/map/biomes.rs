@@ -6,11 +6,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use bevy::prelude::*;
 use bevy::reflect::Reflect;
 use serde::Deserialize;
 
+pub(super) fn plugin(app: &mut App) {}
+
 #[derive(Reflect, Deserialize, Debug, PartialEq, Clone)]
-pub(crate) struct Biome {
+pub struct Biome {
     pub name: String,
     pub enabled: Option<bool>,
     //conditions: Option<HashMap<String, HashMap<String, usize>>>,
@@ -104,7 +107,7 @@ mod tests {
         tempdir, tempfile, Builder, TempDir,
     };
 
-    use crate::biomes::load_biome;
+    use crate::worlds::map::biomes::load_biome;
 
     use super::{load_biomes, Biome, LoadBiomeError};
 
