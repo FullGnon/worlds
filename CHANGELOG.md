@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unrealeased]
 
+### Changed
+
+- Big refacto following Bevy recommandations for plugin architecture
+    - WorldsPlugin is composed by the camera, UI, settings and the map
+    - MapPlugin do everything else mainly generating, rendering the tilemap
+
 ## [0.1.4] - 2024-10-31
 
 ### Added
