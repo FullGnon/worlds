@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use bevy::prelude::*;
+use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use bevy::{math::uvec2, transform::commands};
 use bevy_fast_tilemap::{bundle::MapBundleManaged, map::Map, plugin::FastTileMapPlugin};
 use biomes::Biome;
@@ -83,29 +84,11 @@ pub(super) fn plugin(app: &mut App) {
 fn setup_map(
     mut commands: Commands,
     config: Res<Settings>,
-    texture_tileset: Res<TextureTileSet>,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<Map>>,
     maps: Query<&Handle<Map>>,
     mut shape_generator_resource: ResMut<ShapeGeneratorResource>,
 ) {
-    let tiles_texture = asset_server.load(texture_tileset.path.clone());
-
-    let map = Map::builder(
-        // Map size
-        uvec2(config.width, config.height),
-        // Tile atlas
-        tiles_texture,
-        // Tile Size
-        config.tile_size,
-    )
-    .build_and_set(|_| 2);
-
-    commands.spawn(MapBundleManaged {
-        material: materials.add(map),
-        ..default()
-    });
-
     commands.trigger(GenerateMapEvent);
 }
 
@@ -128,32 +111,47 @@ fn on_generate_map(
         }
     }
 
-    println!("{:?}", tile_matrix);
-
     commands.trigger(DrawMapEvent);
 }
 
 fn on_draw_map(
     trigger: Trigger<DrawMapEvent>,
+    mut commands: Commands,
     asset_server: Res<AssetServer>,
-    texture_tileset: Res<TextureTileSet>,
-    mut materials: ResMut<Assets<Map>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
     config: Res<Settings>,
-    maps: Query<&Handle<Map>>,
     tile_matrix: Res<TileMatrixResource>,
-    renderer: Res<MapRendererResource>,
 ) {
-    for map_handle in maps.iter() {
-        let map = materials.get_mut(map_handle).unwrap();
-        let mut m = map.indexer_mut();
+    for x in 0..tile_matrix.width {
+        for y in 0..tile_matrix.height {
+            let tile = tile_matrix.get(x, y).unwrap();
+            let size = 20.;
+            let mut mesh = Mesh::from(RegularPolygon::new(size, 6));
 
-        for x in 0..tile_matrix.width {
-            for y in 0..tile_matrix.height {
-                let tile = tile_matrix.get(x, y).unwrap();
-                let tile_index = renderer.renderer.get_tile_index(tile);
-
-                m.set(x.try_into().unwrap(), y.try_into().unwrap(), tile_index);
+            let mut pos_x = x as f32 * size * 3_f32.sqrt();
+            if y % 2 == 1 {
+                pos_x += (size * 3_f32.sqrt()) / 2.;
             }
+            let pos_y = y as f32 * size * 3. / 2.;
+
+            let vertex_colors: Vec<[f32; 4]> = vec![
+                LinearRgba::RED.to_f32_array(),
+                LinearRgba::BLUE.to_f32_array(),
+                LinearRgba::GREEN.to_f32_array(),
+                LinearRgba::RED.to_f32_array(),
+                LinearRgba::BLUE.to_f32_array(),
+                LinearRgba::GREEN.to_f32_array(),
+            ];
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, vertex_colors);
+            let mesh_handle: Mesh2dHandle = meshes.add(mesh).into();
+
+            commands.spawn(MaterialMesh2dBundle {
+                mesh: mesh_handle,
+                transform: Transform::from_translation(Vec3::new(pos_x, pos_y, 0.0)),
+                material: materials.add(ColorMaterial::default()),
+                ..default()
+            });
         }
     }
 }

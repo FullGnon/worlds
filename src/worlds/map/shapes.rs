@@ -77,9 +77,7 @@ impl ShapeGenerator for ContinentsShape {
             self.random_points.push((x, y));
         }
 
-        println!("RANDOM POINTS {:?}", self.random_points);
         let distance_max = ((config.width.pow(2) + config.height.pow(2)) as f64).sqrt();
-        println!("DISTANCE MAX {}", distance_max);
     }
 
     fn generate(&self, x: u32, y: u32, config: &Settings) -> f64 {
