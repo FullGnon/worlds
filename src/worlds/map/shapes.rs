@@ -66,7 +66,7 @@ impl ShapeGenerator for ContinentsShape {
         let y_max = config.height as f64;
         let mut rng = rand::thread_rng();
 
-        self.count = config.world_shape.count_continent;
+        self.count = 1;
         self.seed = config.elevation_gen.seed;
         self.random_points.clear();
 
@@ -77,9 +77,7 @@ impl ShapeGenerator for ContinentsShape {
             self.random_points.push((x, y));
         }
 
-        println!("RANDOM POINTS {:?}", self.random_points);
         let distance_max = ((config.width.pow(2) + config.height.pow(2)) as f64).sqrt();
-        println!("DISTANCE MAX {}", distance_max);
     }
 
     fn generate(&self, x: u32, y: u32, config: &Settings) -> f64 {
@@ -95,6 +93,6 @@ impl ShapeGenerator for ContinentsShape {
             }
         }
 
-        scale(distance, 0., config.world_shape.shape_radius, -1., 1.)
+        scale(distance, 0., 2., -1., 1.)
     }
 }

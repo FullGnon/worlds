@@ -22,24 +22,24 @@ pub struct Settings {
     pub width: u32,
     pub tile_size: Vec2,
 
-    pub mode: MapMode,
-    pub world_shape: WorldShapeGeneration,
-    pub shaped_world: bool,
+    pub elevation: bool,
+    pub temperature: bool,
+    pub temperature_factor: f32,
 
     pub elevation_gen: PerlinConfiguration,
     pub temperature_gen: TemperatureGeneration,
-    pub sea_level: f64,
-
-    pub biomes: HashMap<String, Biome>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            height: 100,
-            width: 100,
-            tile_size: Vec2::new(16., 16.),
+            height: 500,
+            width: 500,
+            tile_size: Vec2::new(50., 58.),
+            elevation: true,
+            temperature: false,
+            temperature_factor: 0.4,
             elevation_gen: PerlinConfiguration {
                 seed: random(),
                 noise_scale: 100.,
@@ -66,12 +66,6 @@ impl Default for Settings {
                 scale_lat_factor: 40.,
                 noise_factor: 20.,
             },
-            sea_level: 0.05,
-            // TBD: It could be better to load biomes as asset directly
-            biomes: load_biomes(Path::new("assets/biomes")).unwrap(),
-            mode: MapMode::Elevation,
-            world_shape: WorldShapeGeneration::default(),
-            shaped_world: true,
         }
     }
 }
@@ -80,7 +74,6 @@ impl Default for Settings {
 pub enum MapMode {
     Elevation,
     Temperature,
-    WorldShapeMode,
 }
 
 #[derive(Reflect)]
@@ -88,31 +81,6 @@ pub struct TemperatureGeneration {
     pub perlin: PerlinConfiguration,
     pub scale_lat_factor: f64,
     pub noise_factor: f64,
-}
-
-#[derive(Reflect)]
-pub enum WorldShapeEnum {
-    CenteredShape,
-    Continents,
-}
-
-#[derive(Reflect)]
-pub struct WorldShapeGeneration {
-    pub shape: WorldShapeEnum,
-    pub shape_factor: f64,
-    pub shape_radius: f64,
-    pub count_continent: usize,
-}
-
-impl Default for WorldShapeGeneration {
-    fn default() -> Self {
-        Self {
-            shape: WorldShapeEnum::Continents,
-            shape_factor: 1.1,
-            shape_radius: 200.,
-            count_continent: 2,
-        }
-    }
 }
 
 #[derive(Reflect)]
