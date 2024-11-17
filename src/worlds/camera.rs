@@ -8,11 +8,7 @@ pub(super) fn plugin(app: &mut App) {
 
 fn spawn_camera(mut commands: Commands) {
     /* TODO: hardcoded camera */
-    let camera_transform = Transform {
-        scale: Vec3::splat(6.0),
-        translation: Vec3::new(-1200., 0., 0.),
-        ..default()
-    };
+    let camera_transform = Transform { ..default() };
 
     commands.spawn((
         Camera2dBundle {

@@ -2,175 +2,154 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use bevy::prelude::*;
+use bevy::render::settings;
+use bevy::render::view::visibility;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use bevy::{math::uvec2, transform::commands};
-use bevy_fast_tilemap::{bundle::MapBundleManaged, map::Map, plugin::FastTileMapPlugin};
+use bevy_ecs_tilemap::prelude::*;
 use biomes::Biome;
 use events::{DrawMapEvent, GenerateMapEvent};
-use generator::elevation::ElevationGenerator;
-use generator::temperature::TemperatureGenerator;
+use generator::elevation::{generate as elevation_gen, ElevationGenerator, TileElevation};
+use generator::temperature::generate as temperature_gen;
+use generator::temperature::{TemperatureGenerator, TileTemperature};
 use generator::MapGenerator;
 use noise::{NoiseFn, Perlin};
 use renderer::elevation::ElevationMapRenderer;
 use renderer::temperature::TemperatureMapRenderer;
-use renderer::MapRenderer;
 use shapes::{CircleCenteredShape, ContinentsShape, ShapeGenerator, ShapeGeneratorResource};
-use tile::{Tile, TileMatrixResource};
+
+use super::settings::{MapMode, Settings};
 pub(crate) mod biomes;
 mod events;
 mod generator;
 mod renderer;
 mod shapes;
-mod tile;
-mod tileset;
-
-use super::{
-    settings::{MapMode, Settings, WorldShapeEnum},
-    utils::{scale_to_index, xy_to_lonlat},
-};
-use tileset::{TextureTile, TextureTileSet};
 
 const MAX_PERLIN_SCALE: f64 = 100000.;
 
-#[derive(Resource)]
-pub struct MapGeneratorsResource {
-    generators: Vec<Box<dyn MapGenerator>>,
+#[derive(Component)]
+struct LastUpdate(f64);
+
+#[derive(Component)]
+struct TemperatureTileMap;
+
+#[derive(Component)]
+struct ElevationTileMap;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+enum MapSet {
+    Prepare,
+    Generate,
+    Render,
 }
 
-impl FromWorld for MapGeneratorsResource {
-    fn from_world(world: &mut World) -> Self {
-        let config = world.resource::<Settings>();
-
-        let mut generators: Vec<Box<dyn MapGenerator>> =
-            vec![Box::new(ElevationGenerator), Box::new(TemperatureGenerator)];
-
-        Self { generators }
-    }
-}
-
-#[derive(Resource)]
-struct MapRendererResource {
-    renderer: Box<dyn MapRenderer>,
-}
-
-impl FromWorld for MapRendererResource {
-    fn from_world(world: &mut World) -> Self {
-        let config = world.resource::<Settings>();
-        let texture_tileset = world.resource::<TextureTileSet>();
-
-        let renderer: Box<dyn MapRenderer> = match config.mode {
-            MapMode::Elevation => Box::new(ElevationMapRenderer::new(texture_tileset)),
-            MapMode::Temperature => Box::new(TemperatureMapRenderer::new(texture_tileset)),
-            MapMode::WorldShapeMode => Box::new(ElevationMapRenderer::new(texture_tileset)),
-        };
-
-        Self { renderer }
-    }
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
+enum MapState {
+    #[default]
+    Normal,
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.init_resource::<TextureTileSet>()
-        .init_resource::<TileMatrixResource>()
-        .init_resource::<MapGeneratorsResource>()
-        .init_resource::<MapRendererResource>()
-        .add_plugins(FastTileMapPlugin::default())
-        .add_plugins((biomes::plugin, shapes::plugin))
+    app.add_plugins(TilemapPlugin)
+        .init_state::<MapState>()
+        .configure_sets(
+            Update,
+            (MapSet::Prepare, MapSet::Generate, MapSet::Render).chain(),
+        )
         .add_systems(Startup, setup_map)
-        .add_systems(Update, update_map)
-        .observe(on_generate_map)
-        .observe(on_draw_map);
+        .add_systems(
+            Update,
+            (
+                (elevation_gen, temperature_gen).in_set(MapSet::Generate),
+                (update_tiles_color).in_set(MapSet::Render),
+            )
+                .run_if(resource_changed::<Settings>),
+        );
 }
 
-fn setup_map(
-    mut commands: Commands,
-    config: Res<Settings>,
-    asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<Map>>,
-    maps: Query<&Handle<Map>>,
-    mut shape_generator_resource: ResMut<ShapeGeneratorResource>,
-) {
-    commands.trigger(GenerateMapEvent);
-}
+fn setup_map(mut commands: Commands, config: Res<Settings>, asset_server: Res<AssetServer>) {
+    let map_size = TilemapSize {
+        x: config.width,
+        y: config.height,
+    };
 
-fn on_generate_map(
-    trigger: Trigger<GenerateMapEvent>,
-    mut commands: Commands,
-    mut tile_matrix: ResMut<TileMatrixResource>,
-    config: Res<Settings>,
-    mut generators: ResMut<MapGeneratorsResource>,
-) {
-    for x in 0..config.width {
-        for y in 0..config.height {
-            let mut tile: Tile = Tile::default();
+    let tilemap_entity = commands.spawn_empty().id();
+    let texture_handle: Handle<Image> = asset_server.load("tiles_white.png");
+    let coord_sys: HexCoordSystem = HexCoordSystem::RowEven;
 
-            for generator in &generators.generators {
-                generator.apply(&mut tile, x, y, &config);
-            }
-
-            tile_matrix.set(x as usize, y as usize, tile);
+    // Initialize tile storage with empty tiles
+    let mut tile_storage = TileStorage::empty(map_size);
+    for x in 0..map_size.x {
+        for y in 0..map_size.y {
+            let tile_pos = TilePos { x, y };
+            let tile_entity = commands
+                .spawn(TileBundle {
+                    position: tile_pos,
+                    tilemap_id: TilemapId(tilemap_entity),
+                    color: TileColor(Color::srgb(0., 0., 0.)),
+                    ..default()
+                })
+                .id();
+            tile_storage.set(&tile_pos, tile_entity);
         }
     }
 
-    commands.trigger(DrawMapEvent);
+    let tile_size = TilemapTileSize {
+        x: config.tile_size.x,
+        y: config.tile_size.y,
+    };
+
+    let grid_size = tile_size.into();
+    let map_type = TilemapType::Hexagon(coord_sys);
+
+    commands.entity(tilemap_entity).insert((
+        TilemapBundle {
+            grid_size,
+            map_type,
+            tile_size,
+            size: map_size,
+            storage: tile_storage,
+            texture: TilemapTexture::Single(texture_handle.clone()),
+            transform: get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0),
+            ..default()
+        },
+        LastUpdate(-1.0),
+    ));
 }
 
-fn on_draw_map(
-    trigger: Trigger<DrawMapEvent>,
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    config: Res<Settings>,
-    tile_matrix: Res<TileMatrixResource>,
+fn update_tiles_color(
+    time: Res<Time>,
+    settings: Res<Settings>,
+    mut tilemap_query: Query<(&mut Visibility, &mut LastUpdate)>,
+    mut tile_query: Query<(&TileElevation, &TileTemperature, &mut TileColor)>,
 ) {
-    for x in 0..tile_matrix.width {
-        for y in 0..tile_matrix.height {
-            let tile = tile_matrix.get(x, y).unwrap();
-            let size = 20.;
-            let mut mesh = Mesh::from(RegularPolygon::new(size, 6));
+    let mut elevation_renderer = ElevationMapRenderer;
+    let mut temperature_renderer = TemperatureMapRenderer;
+    let current_time = time.elapsed_seconds_f64();
+    for (mut visibility, mut last_update) in tilemap_query.iter_mut() {
+        if current_time - last_update.0 > 0.1 {
+            if !settings.elevation && !settings.temperature {
+                *visibility = Visibility::Hidden;
+            } else {
+                *visibility = Visibility::Visible;
 
-            let mut pos_x = x as f32 * size * 3_f32.sqrt();
-            if y % 2 == 1 {
-                pos_x += (size * 3_f32.sqrt()) / 2.;
+                for (tile_elevation, tile_temperature, mut tile_color) in tile_query.iter_mut() {
+                    let mut color = Color::srgba(1., 1., 1., 1.);
+
+                    if settings.elevation {
+                        color.mix_assign(elevation_renderer.get_color(tile_elevation), 1.);
+                    }
+                    if settings.temperature {
+                        color.mix_assign(
+                            temperature_renderer.get_color(tile_temperature, &settings),
+                            settings.temperature_factor,
+                        );
+                    }
+
+                    *tile_color = TileColor(color);
+                }
             }
-            let pos_y = y as f32 * size * 3. / 2.;
-
-            let vertex_colors: Vec<[f32; 4]> = vec![
-                LinearRgba::RED.to_f32_array(),
-                LinearRgba::BLUE.to_f32_array(),
-                LinearRgba::GREEN.to_f32_array(),
-                LinearRgba::RED.to_f32_array(),
-                LinearRgba::BLUE.to_f32_array(),
-                LinearRgba::GREEN.to_f32_array(),
-            ];
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, vertex_colors);
-            let mesh_handle: Mesh2dHandle = meshes.add(mesh).into();
-
-            commands.spawn(MaterialMesh2dBundle {
-                mesh: mesh_handle,
-                transform: Transform::from_translation(Vec3::new(pos_x, pos_y, 0.0)),
-                material: materials.add(ColorMaterial::default()),
-                ..default()
-            });
+            last_update.0 = current_time;
         }
-    }
-}
-
-fn update_map(
-    mut commands: Commands,
-    config: Res<Settings>,
-    mut materials: ResMut<Assets<Map>>,
-    maps: Query<&Handle<Map>>,
-    mut shape_generator_resource: ResMut<ShapeGeneratorResource>,
-    mut renderer: ResMut<MapRendererResource>,
-    texture_tileset: Res<TextureTileSet>,
-) {
-    if config.is_changed() {
-        renderer.renderer = match config.mode {
-            MapMode::Elevation => Box::new(ElevationMapRenderer::new(&texture_tileset)),
-            MapMode::Temperature => Box::new(TemperatureMapRenderer::new(&texture_tileset)),
-            MapMode::WorldShapeMode => Box::new(ElevationMapRenderer::new(&texture_tileset)),
-        };
-        commands.trigger(GenerateMapEvent);
     }
 }
