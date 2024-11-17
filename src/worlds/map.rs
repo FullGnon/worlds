@@ -30,12 +30,6 @@ const MAX_PERLIN_SCALE: f64 = 100000.;
 #[derive(Component)]
 struct LastUpdate(f64);
 
-#[derive(Component)]
-struct TemperatureTileMap;
-
-#[derive(Component)]
-struct ElevationTileMap;
-
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 enum MapSet {
     Prepare,
