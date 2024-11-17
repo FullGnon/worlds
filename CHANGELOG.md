@@ -12,12 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unrealeased]
 
+## [0.1.5] - 2024-11-17
+
 ### Changed
 
 - Big refacto following Bevy recommandations for plugin architecture
     - WorldsPlugin is composed by the camera, UI, settings and the map
     - MapPlugin do everything else mainly generating, rendering the tilemap
-    - Use bevy_ecs_tilemap for handling tilemap in ECS way (not sure yet if its the more accurate choice for generating worlds)
+- Use bevy_ecs_tilemap for handling tilemap in ECS way (not sure yet if its the more accurate choice for generating worlds)
 - Enable/Disable map "layer" (elevation, temperature)
     - There is only one layer, rendering "layers" for now is just mixing their colors
 - Hexagonal tiles ! I plan to project them on a sphere
